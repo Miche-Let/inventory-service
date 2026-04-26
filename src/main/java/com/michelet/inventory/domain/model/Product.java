@@ -11,9 +11,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -56,10 +58,18 @@ public class Product extends BaseEntity {
     @Builder(access = AccessLevel.PRIVATE)
     private Product(UUID restaurantId, String name, ProductCategory category, BigDecimal basePrice,
                     Map<String, Object> attributes) {
+
+        // 도메인 불변성 검증 (Fail-Fast)
+        Objects.requireNonNull(restaurantId, "Restaurant ID must not be null");
+        Objects.requireNonNull(category, "Category must not be null");
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Name must not be blank");
+        }
+
         this.restaurantId = restaurantId;
         this.name = name;
         this.category = category;
-        this.basePrice = basePrice;
+        this.basePrice = validateOrNormalizePrice(basePrice);
         // 방어적 복사 및 null 방어
         this.attributes = attributes != null ? new HashMap<>(attributes) : new HashMap<>();
         this.status = ProductStatus.ACTIVE;
@@ -67,6 +77,17 @@ public class Product extends BaseEntity {
 
     public Map<String, Object> getAttributes() {
         return Collections.unmodifiableMap(attributes);
+    }
+
+    private BigDecimal validateOrNormalizePrice(BigDecimal price) {
+        if (price == null) {
+            return BigDecimal.ZERO;
+        }
+        if (price.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("가격은 0원 이상이어야 합니다.");
+        }
+        // 소수점 2자리로 반올림하여 정규화 (DB scale=2 대응)
+        return price.setScale(2, RoundingMode.HALF_UP);
     }
 
     public static Product create(UUID restaurantId, String name, ProductCategory category,

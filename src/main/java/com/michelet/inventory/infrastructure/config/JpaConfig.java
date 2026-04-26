@@ -25,7 +25,7 @@ public class JpaConfig {
                 try {
                     return UUID.fromString(auth.getName());
                 } catch (IllegalArgumentException e) {
-                    return UUID.fromString("00000000-0000-0000-0000-000000000000");
+                    return null;
                 }
             });
     }

@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 public record CreateProductRequest(
@@ -28,17 +29,16 @@ public record CreateProductRequest(
     }
 
     public CreateProductCommand toCommand() {
-        // null 방어 로직 추가
-        var exhibitionCommand = (exhibition != null)
-            ? new CreateProductCommand.ExhibitionCommand(exhibition.startAt(), exhibition.endAt())
-            : null;
+
+        Objects.requireNonNull(exhibition, "전시 정보(exhibition)는 필수입니다.");
+        Objects.requireNonNull(options, "옵션 정보(options)는 최소 1개 이상 필요합니다.");
 
         return new CreateProductCommand(
             restaurantId, name, category, basePrice, attributes,
-            exhibitionCommand,
-            options != null ? options.stream().map(opt -> new CreateProductCommand.OptionCommand(
+            new CreateProductCommand.ExhibitionCommand(exhibition.startAt(), exhibition.endAt()),
+            options.stream().map(opt -> new CreateProductCommand.OptionCommand(
                 opt.name(), opt.addPrice(), opt.totalQuantity(), opt.dailyLimit(), opt.maxLimit()
-            )).toList() : List.of()
+            )).toList()
         );
     }
 }

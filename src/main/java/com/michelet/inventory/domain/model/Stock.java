@@ -54,13 +54,13 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         // 2. VO를 통한 비즈니스 규칙 검증 - 생성하는 시점에 VO를 호출하여 0 미만인지 검증
         new Quantity(totalQuantity);
         new Quantity(dailyLimit);
-        new Quantity(maxLimit);
+        new Quantity(actualMaxLimit);
 
         return Stock.builder()
             .optionId(optionId)
             .totalQuantity(totalQuantity)
             .dailyLimit(dailyLimit)
-            .maxLimit(maxLimit)
+            .maxLimit(actualMaxLimit)
             .build();
     }
 

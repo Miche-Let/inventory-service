@@ -49,13 +49,20 @@ class ProductIntegrationTest {
     @Test
     @DisplayName("실제 PostgreSQL 환경에서 JSONB 속성이 정상 저장 및 조회되어야 한다")
     void jsonbPersistenceTest() {
+        // 1. Given: 테스트 데이터 준비
         Map<String, Object> attributes = Map.of("servings", 2);
-        Product product = Product.create(UUID.randomUUID(), "테스트", ProductCategory.MEALKIT, new BigDecimal("1000"),
-            attributes);
+        Product product = Product.create(
+            UUID.randomUUID(), "테스트", ProductCategory.MEALKIT, new BigDecimal("1000"), attributes
+        );
 
-        productRepository.save(product);
+        // 2. When: 저장 (save 메서드는 영속화된 객체를 반환)
+        Product savedProduct = productRepository.save(product);
 
-        Product found = productRepository.findAll().get(0);
+        // 3. Then: 저장된 ID로 정확히 다시 조회
+        Product found = productRepository.findById(savedProduct.getId())
+            .orElseThrow(() -> new AssertionError("저장된 상품을 찾을 수 없습니다."));
+
+        // 검증
         assertThat(found.getAttributes()).containsEntry("servings", 2);
     }
 }
