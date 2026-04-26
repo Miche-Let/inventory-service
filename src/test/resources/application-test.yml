@@ -17,13 +17,13 @@ spring:
 
     # JPA/H2 설정: 인메모리 DB 사용
     datasource:
-        driver-class-name: org.h2.Driver
+        #        driver-class-name: org.h2.Driver
         url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
         username: sa
         password:
 
     jpa:
-        database-platform: org.hibernate.dialect.H2Dialect
+        #        database-platform: org.hibernate.dialect.H2Dialect
         hibernate:
             ddl-auto: create-drop
         show-sql: true
