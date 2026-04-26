@@ -1,0 +1,8 @@
+spring:
+    application:
+        name: inventory-service
+    profiles:
+        active: local
+
+server:
+    port: 19900
