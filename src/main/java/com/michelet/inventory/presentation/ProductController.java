@@ -5,6 +5,7 @@ import com.michelet.inventory.application.ProductCommandService;
 import com.michelet.inventory.application.dto.ProductResult;
 import com.michelet.inventory.presentation.dto.CreateProductRequest;
 import com.michelet.inventory.presentation.dto.ProductResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,7 +26,7 @@ public class ProductController {
     }
 
     @PostMapping
-    public ApiResponse<ProductResponse> createProduct(@RequestBody CreateProductRequest request) {
+    public ApiResponse<ProductResponse> createProduct(@Valid @RequestBody CreateProductRequest request) {
         ProductResult result = productCommandService.createProduct(request.toCommand());
         return ApiResponse.ok(new ProductResponse(result.productId()));
     }
