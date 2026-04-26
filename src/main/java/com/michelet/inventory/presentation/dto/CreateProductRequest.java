@@ -2,6 +2,7 @@ package com.michelet.inventory.presentation.dto;
 
 import com.michelet.inventory.application.dto.CreateProductCommand;
 import com.michelet.inventory.domain.model.ProductCategory;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -15,8 +16,8 @@ public record CreateProductRequest(
     @NotNull ProductCategory category,
     @NotNull BigDecimal basePrice,
     Map<String, Object> attributes,
-    @NotNull ExhibitionRequest exhibition,
-    @NotNull List<OptionRequest> options
+    @NotNull @Valid ExhibitionRequest exhibition,
+    @NotNull @Valid List<OptionRequest> options
 ) {
     public record ExhibitionRequest(@NotNull LocalDateTime startAt, LocalDateTime endAt) {
     }

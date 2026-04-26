@@ -11,6 +11,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -53,14 +54,19 @@ public class Product extends BaseEntity {
     private ProductStatus status = ProductStatus.ACTIVE;
 
     @Builder(access = AccessLevel.PRIVATE)
-    private Product(UUID restaurantId, String name, ProductCategory category,
-                    BigDecimal basePrice, Map<String, Object> attributes) {
+    private Product(UUID restaurantId, String name, ProductCategory category, BigDecimal basePrice,
+                    Map<String, Object> attributes) {
         this.restaurantId = restaurantId;
         this.name = name;
         this.category = category;
         this.basePrice = basePrice;
-        this.attributes = attributes != null ? attributes : new HashMap<>();
+        // 방어적 복사 및 null 방어
+        this.attributes = attributes != null ? new HashMap<>(attributes) : new HashMap<>();
         this.status = ProductStatus.ACTIVE;
+    }
+
+    public Map<String, Object> getAttributes() {
+        return Collections.unmodifiableMap(attributes);
     }
 
     public static Product create(UUID restaurantId, String name, ProductCategory category,

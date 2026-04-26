@@ -48,7 +48,10 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
     }
 
     public static Stock create(UUID optionId, Integer totalQuantity, Integer dailyLimit, Integer maxLimit) {
-        // 생성하는 시점에 VO를 호출하여 0 미만인지 검증
+        // 1. 기본값 적용 먼저 (null 대응)
+        Integer actualMaxLimit = (maxLimit == null) ? 10 : maxLimit;
+
+        // 2. VO를 통한 비즈니스 규칙 검증 - 생성하는 시점에 VO를 호출하여 0 미만인지 검증
         new Quantity(totalQuantity);
         new Quantity(dailyLimit);
         new Quantity(maxLimit);
@@ -63,6 +66,11 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
 
     // 재고 규칙 - 검증 메서드
     public void validateReserve(Integer requestQuantity) {
+        // 입력값 유효성 선제 검증
+        if (requestQuantity == null || requestQuantity <= 0) {
+            throw new IllegalArgumentException("예약 수량은 1개 이상이어야 합니다.");
+        }
+
         if (this.totalQuantity < requestQuantity) {
             throw new RuntimeException("전체 재고 부족");
         }
