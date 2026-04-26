@@ -30,7 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
         // 만약 여전히 Redisson 에러가 나면 "org.redisson.spring.starter.RedissonAutoConfiguration" 추가 가능
     }
 )
-@AutoConfigureRestDocs
+@AutoConfigureRestDocs(uriScheme = "http", uriHost = "localhost", uriPort = 19900)
 @ActiveProfiles("test")
 @Import(RestDocsConfig.class)
 public class ProductControllerTest {
