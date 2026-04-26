@@ -3,6 +3,7 @@ package com.michelet.inventory.presentation;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.restdocs.mockmvc.MockMvcRestDocumentation.document;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.michelet.inventory.application.ProductCommandService;
@@ -50,6 +51,9 @@ public class ProductControllerTest {
         mockMvc.perform(get("/api/v1/admin/products/health")
                 .accept(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true))
+            .andExpect(jsonPath("$.message").isString())
+            .andExpect(jsonPath("$.data").isNotEmpty())
             .andDo(document("{class-name}/{method-name}"));
     }
 }
