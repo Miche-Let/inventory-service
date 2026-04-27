@@ -1,6 +1,7 @@
 package com.michelet.inventory.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.michelet.inventory.application.dto.CreateProductCommand;
 import com.michelet.inventory.application.dto.ProductResult;
@@ -99,9 +100,9 @@ class ProductCommandServiceTest {
         );
 
         // when & then: Price VO에서 IllegalArgumentException이 발생하는지 검증
-        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                productCommandService.createProduct(command)
-            ).isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() ->
+            productCommandService.createProduct(command)
+        ).isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("가격은 0원 이상이어야 합니다.");
     }
 }

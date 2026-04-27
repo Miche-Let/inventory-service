@@ -3,7 +3,11 @@ package com.michelet.inventory.presentation.dto;
 import com.michelet.inventory.application.dto.CreateProductCommand;
 import com.michelet.inventory.domain.model.ProductCategory;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -13,25 +17,28 @@ import java.util.UUID;
 
 public record CreateProductRequest(
     @NotNull UUID restaurantId,
-    @NotNull String name,
+    @NotBlank String name,
     @NotNull ProductCategory category,
-    @NotNull BigDecimal basePrice,
+    @PositiveOrZero BigDecimal basePrice,
     Map<String, Object> attributes,
     @NotNull @Valid ExhibitionRequest exhibition,
-    @NotNull @Valid List<OptionRequest> options
+    @NotEmpty List<@NotNull @Valid OptionRequest> options
 ) {
     public record ExhibitionRequest(@NotNull LocalDateTime startAt, LocalDateTime endAt) {
     }
 
-    public record OptionRequest(@NotNull String name, @NotNull BigDecimal addPrice, @NotNull Integer totalQuantity,
-                                Integer dailyLimit,
-                                Integer maxLimit) {
+    public record OptionRequest(
+        @NotBlank String name,
+        @PositiveOrZero BigDecimal addPrice,
+        @Min(0) Integer totalQuantity,
+        @Min(0) Integer dailyLimit,
+        @Min(0) Integer maxLimit
+    ) {
     }
 
     public CreateProductCommand toCommand() {
-
-        Objects.requireNonNull(exhibition, "전시 정보(exhibition)는 필수입니다.");
-        
+        // Fail-Fast: DTO 변환 시점에 원천 차단
+        Objects.requireNonNull(exhibition, "전시 정보는 필수입니다.");
         if (options == null || options.isEmpty() || options.stream().anyMatch(Objects::isNull)) {
             throw new IllegalArgumentException("옵션 정보(options)는 최소 1개 이상 필요합니다.");
         }
