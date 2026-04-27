@@ -19,7 +19,7 @@ public record CreateProductRequest(
     @NotNull UUID restaurantId,
     @NotBlank String name,
     @NotNull ProductCategory category,
-    @PositiveOrZero BigDecimal basePrice,
+    @NotNull @PositiveOrZero BigDecimal basePrice,
     Map<String, Object> attributes,
     @NotNull @Valid ExhibitionRequest exhibition,
     @NotEmpty List<@NotNull @Valid OptionRequest> options
@@ -29,10 +29,10 @@ public record CreateProductRequest(
 
     public record OptionRequest(
         @NotBlank String name,
-        @PositiveOrZero BigDecimal addPrice,
-        @Min(0) Integer totalQuantity,
-        @Min(0) Integer dailyLimit,
-        @Min(0) Integer maxLimit
+        @NotNull @PositiveOrZero BigDecimal addPrice,
+        @NotNull @Min(0) Integer totalQuantity,
+        @NotNull @Min(0) Integer dailyLimit,
+        @NotNull @Min(0) Integer maxLimit
     ) {
     }
 
