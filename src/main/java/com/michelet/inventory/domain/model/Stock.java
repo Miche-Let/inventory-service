@@ -14,7 +14,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.domain.Persistable;
 
-@Entity
+@Entity(name = "p_stocks")
 @Table(name = "p_stocks")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -38,12 +38,13 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
     @Version // 낙관적 락용 버전
     private Long version;
 
-    @Builder
+    @Builder(access = AccessLevel.PRIVATE)
     private Stock(UUID optionId, Integer totalQuantity, Integer dailyLimit, Integer maxLimit) {
         this.optionId = optionId;
         this.totalQuantity = totalQuantity;
         this.dailyLimit = dailyLimit;
-        this.currentDailyStock = dailyLimit; // 초기값은 dailyLimit과 동일하게 세팅
+        // 생성자 로직: 초기 재고는 일일 한도와 동일하게 설정
+        this.currentDailyStock = dailyLimit;
         this.maxLimit = maxLimit != null ? maxLimit : 10;
     }
 
@@ -56,6 +57,7 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         new Quantity(dailyLimit);
         new Quantity(actualMaxLimit);
 
+        // 빌더가 위에서 정의한 private Stock 생성자를 호출하므로 로직이 보장됨
         return Stock.builder()
             .optionId(optionId)
             .totalQuantity(totalQuantity)
@@ -72,13 +74,13 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         }
 
         if (this.totalQuantity < requestQuantity) {
-            throw new RuntimeException("전체 재고 부족");
+            throw new IllegalArgumentException("전체 재고 부족");
         }
         if (this.currentDailyStock < requestQuantity) {
-            throw new RuntimeException("일일 판매 한도 초과");
+            throw new IllegalArgumentException("일일 판매 한도 초과");
         }
         if (requestQuantity > this.maxLimit) {
-            throw new RuntimeException("1인당 최대 구매 수량 초과");
+            throw new IllegalArgumentException("1인당 최대 구매 수량 초과");
         }
     }
 

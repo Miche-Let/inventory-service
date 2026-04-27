@@ -81,7 +81,7 @@ public class Product extends BaseEntity {
 
     private BigDecimal validateOrNormalizePrice(BigDecimal price) {
         if (price == null) {
-            return BigDecimal.ZERO;
+            throw new IllegalArgumentException("가격 정보가 누락되었습니다.");
         }
         if (price.compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("가격은 0원 이상이어야 합니다.");

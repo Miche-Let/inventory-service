@@ -31,7 +31,10 @@ public record CreateProductRequest(
     public CreateProductCommand toCommand() {
 
         Objects.requireNonNull(exhibition, "전시 정보(exhibition)는 필수입니다.");
-        Objects.requireNonNull(options, "옵션 정보(options)는 최소 1개 이상 필요합니다.");
+        
+        if (options == null || options.isEmpty() || options.stream().anyMatch(Objects::isNull)) {
+            throw new IllegalArgumentException("옵션 정보(options)는 최소 1개 이상 필요합니다.");
+        }
 
         return new CreateProductCommand(
             restaurantId, name, category, basePrice, attributes,
