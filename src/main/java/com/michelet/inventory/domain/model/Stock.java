@@ -24,16 +24,16 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
     private UUID optionId; // ProductOption의 ID를 PK로 사용
 
     @Column(nullable = false)
-    private Integer totalQuantity = 0;
+    private Integer totalQuantity;
 
     @Column(nullable = false)
-    private Integer dailyLimit = 0;
+    private Integer dailyLimit;
 
     @Column(nullable = false)
-    private Integer currentDailyStock = 0;
+    private Integer currentDailyStock;
 
     @Column(nullable = false)
-    private Integer maxLimit = 10;
+    private Integer maxLimit;
 
     @Version // 낙관적 락용 버전
     private Long version;
@@ -50,6 +50,9 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
 
     public static Stock create(UUID optionId, Integer totalQuantity, Integer dailyLimit, Integer maxLimit) {
         // 1. 기본값 적용 먼저 (null 대응)
+        if (optionId == null) {
+            throw new IllegalArgumentException("Option ID는 필수입니다.");
+        }
         Integer actualMaxLimit = (maxLimit == null) ? 10 : maxLimit;
 
         // 2. VO를 통한 비즈니스 규칙 검증 - 생성하는 시점에 VO를 호출하여 0 미만인지 검증
@@ -91,6 +94,6 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
 
     @Override
     public boolean isNew() {
-        return getCreatedAt() == null;
+        return version == null;
     }
 }
