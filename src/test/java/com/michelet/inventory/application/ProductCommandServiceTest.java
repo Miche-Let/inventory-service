@@ -56,7 +56,7 @@ class ProductCommandServiceTest {
             ),
             List.of(
                 new CreateProductCommand.OptionCommand("맵기 보통", BigDecimal.ZERO, 100, 20, 2),
-                new CreateProductCommand.OptionCommand("맵기 매움", new BigDecimal("1000"), 100, 20, 2)
+                new CreateProductCommand.OptionCommand("맵기 매움", new BigDecimal("1000"), 80, 15, 1)
             )
         );
 
@@ -76,14 +76,22 @@ class ProductCommandServiceTest {
         // 3. 옵션 확인 (1:N)
         var options = productOptionRepository.findAll().stream()
             .filter(o -> o.getProduct().getId().equals(productId))
+            .sorted(java.util.Comparator.comparing(
+                com.michelet.inventory.domain.model.ProductOption::getName)) // 이름순 정렬 후 검증
             .toList();
         assertThat(options).hasSize(2);
 
-        // 4. 재고 확인 (Option ID와 논리적 연동)
+        // 4. 재고 확인 (각 옵션의 이름에 맞는 정확한 수량 검증)
         options.forEach(option -> {
             var stock = stockRepository.findById(option.getId()).orElseThrow();
-            assertThat(stock.getTotalQuantity()).isEqualTo(100);
-            assertThat(stock.getCurrentDailyStock()).isEqualTo(20); // dailyLimit과 동일하게 세팅되는지 확인
+            if (option.getName().equals("맵기 보통")) {
+                assertThat(stock.getTotalQuantity()).isEqualTo(100);
+                assertThat(stock.getCurrentDailyStock()).isEqualTo(20);
+            } else if (option.getName().equals("맵기 매움")) {
+                assertThat(stock.getTotalQuantity()).isEqualTo(80);
+                assertThat(stock.getCurrentDailyStock()).isEqualTo(15);
+                assertThat(stock.getMaxLimit()).isEqualTo(1);
+            }
         });
     }
 
