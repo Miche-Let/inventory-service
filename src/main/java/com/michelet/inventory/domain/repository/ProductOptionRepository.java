@@ -1,8 +1,12 @@
 package com.michelet.inventory.domain.repository;
 
 import com.michelet.inventory.domain.model.ProductOption;
-import java.util.UUID;
-import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
 
-public interface ProductOptionRepository extends JpaRepository<ProductOption, UUID> {
+public interface ProductOptionRepository {
+    ProductOption save(ProductOption option);
+
+    List<ProductOption> saveAll(List<ProductOption> options);
+
+    List<ProductOption> findAll();
 }
