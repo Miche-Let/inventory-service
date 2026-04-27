@@ -94,6 +94,7 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
 
     @Override
     public boolean isNew() {
+        // createdAt은 DB 저장 후에 채워지므로, 객체 생성 직후엔 version(null)으로 판단하는 것이 더 정확함
         return version == null;
     }
 }

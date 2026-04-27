@@ -54,17 +54,18 @@ public class Product extends BaseEntity {
     @Column(nullable = false, length = 20)
     private ProductStatus status;
 
-    @Builder(access = AccessLevel.PRIVATE)
+    @Builder(access = AccessLevel.PRIVATE) // 외부에서 무분별한 빌더 사용 금지
     private Product(UUID restaurantId, String name, ProductCategory category, BigDecimal basePrice,
                     Map<String, Object> attributes) {
 
-        // 도메인 검증 (Fail-Fast)
+        // 1. 필수 값 검증
         Objects.requireNonNull(restaurantId, "Restaurant ID는 필수입니다.");
         Objects.requireNonNull(category, "카테고리는 필수입니다.");
         if (name == null || name.trim().isEmpty()) {
             throw new IllegalArgumentException("상품명은 필수입니다.");
         }
 
+        // 2. 비즈니스 규칙 위임 (Price VO)
         this.restaurantId = restaurantId;
         this.name = name;
         this.category = category;
