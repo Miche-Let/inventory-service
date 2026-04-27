@@ -3,13 +3,49 @@
 :icons: font
 :source-highlighter: highlightjs
 :toc: left
-:toclevels: 2
+:toclevels: 4
+:sectlinks:
 
+[[overview]]
+== 개요
+Miche-Let 인벤토리 서비스의 API 명세서입니다. 모든 응답은 `common` 모듈의 공통 포맷을 따릅니다.
+
+[[health-check]]
 == Health Check
-인벤토리 서비스의 상태를 확인합니다.
+인벤토리 서비스의 생존 상태를 확인합니다.
 
 === Request
 include::{snippets}/product-controller-test/health-check/http-request.adoc[]
 
 === Response
 include::{snippets}/product-controller-test/health-check/http-response.adoc[]
+
+[[product-management]]
+== 상품 관리 (Admin)
+
+[[create-product]]
+=== 상품 등록
+
+==== [성공 시나리오]
+레스토랑 운영자가 새로운 상품과 옵션, 재고 정보를 정상적으로 등록하는 경우입니다.
+
+===== Request
+include::{snippets}/product-controller-test/create-product/http-request.adoc[]
+
+===== Request Fields
+include::{snippets}/product-controller-test/create-product/request-fields.adoc[]
+
+===== Response
+include::{snippets}/product-controller-test/create-product/http-response.adoc[]
+
+===== Response Fields
+include::{snippets}/product-controller-test/create-product/response-fields.adoc[]
+
+==== [실패 시나리오]
+필수 요청 데이터(예: 전시 정보 등)가 누락되어 등록에 실패하는 경우입니다.
+
+===== Request
+include::{snippets}/product-controller-test/create-product-fail-invalid-input/http-request.adoc[]
+
+===== Response
+include::{snippets}/product-controller-test/create-product-fail-invalid-input/http-response.adoc[]

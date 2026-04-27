@@ -54,6 +54,14 @@ dependencies {
 
     // JSONB 사용을 위한 유틸리티
     implementation 'io.hypersistence:hypersistence-utils-hibernate-63:3.7.0'
+
+    implementation 'com.michelet:common'
+
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // Testcontainers (ProductIntegrationTest용)
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'org.testcontainers:junit-jupiter'
 }
 
 dependencyManagement {
