@@ -7,6 +7,7 @@ import com.michelet.inventory.application.dto.ProductResult;
 import com.michelet.inventory.domain.model.Product;
 import com.michelet.inventory.domain.model.ProductCategory;
 import com.michelet.inventory.domain.repository.ProductRepository;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -57,6 +58,9 @@ class ProductIntegrationTest {
     @Autowired
     private ProductRepository productRepository;
 
+    @Autowired
+    private EntityManager entityManager;
+
     @Test
     @DisplayName("상품 등록 통합 테스트: 서비스 호출 시 실제 DB에 상품이 저장되어야 한다")
     void createProduct_Integration() {
@@ -78,6 +82,10 @@ class ProductIntegrationTest {
 
         // when
         ProductResult result = productCommandService.createProduct(command);
+
+        // 강제로 영속성 컨텍스트를 비워 실제 DB에서 조회하도록 보장
+        entityManager.flush();
+        entityManager.clear();
 
         // then: 실제 DB(PostgreSQL 도커)에 데이터가 들어갔는지 검증
         assertThat(result).isNotNull();
