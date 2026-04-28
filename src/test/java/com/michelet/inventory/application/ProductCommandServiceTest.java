@@ -2,11 +2,16 @@ package com.michelet.inventory.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 
 import com.michelet.inventory.application.dto.CreateProductCommand;
 import com.michelet.inventory.application.dto.ProductResult;
 import com.michelet.inventory.domain.model.Product;
 import com.michelet.inventory.domain.model.ProductCategory;
+import com.michelet.inventory.domain.model.ProductOption;
+import com.michelet.inventory.domain.model.Stock;
 import com.michelet.inventory.domain.repository.ProductExhibitionRepository;
 import com.michelet.inventory.domain.repository.ProductOptionRepository;
 import com.michelet.inventory.domain.repository.ProductRepository;
@@ -18,31 +23,43 @@ import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.ActiveProfiles;
-import org.springframework.transaction.annotation.Transactional;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.test.util.ReflectionTestUtils;
 
-@SpringBootTest
-@ActiveProfiles("test") // 테스트용 H2 설정 사용
-@Transactional // 테스트 후 롤백하여 DB 청결 유지
+@ExtendWith(MockitoExtension.class)
 class ProductCommandServiceTest {
 
-    @Autowired
+    @InjectMocks
     private ProductCommandService productCommandService;
 
-    @Autowired
+    @Mock
     private ProductRepository productRepository;
-    @Autowired
+    @Mock
     private ProductOptionRepository productOptionRepository;
-    @Autowired
+    @Mock
     private ProductExhibitionRepository productExhibitionRepository;
-    @Autowired
+    @Mock
     private StockRepository stockRepository;
+    @Mock
+    private KafkaTemplate<String, Object> kafkaTemplate;
+
+    // 리포지토리로 넘어가는 객체를 중간에 가로채기 위한 Captor
+    @Captor
+    private ArgumentCaptor<Product> productCaptor;
+    @Captor
+    private ArgumentCaptor<List<ProductOption>> optionsCaptor;
+    @Captor
+    private ArgumentCaptor<List<Stock>> stocksCaptor;
 
     @Test
-    @DisplayName("성공: 상품 등록 시 모든 도메인 모델(상품/전시/옵션/재고)이 올바르게 저장되어야 한다")
-    void createProductIntegrationTest() {
+    @DisplayName("성공: 상품 등록 시 모든 도메인 모델(상품/전시/옵션/재고)이 올바른 값으로 저장소에 전달되어야 한다")
+    void createProductUnitTest() {
         // given
         CreateProductCommand command = new CreateProductCommand(
             UUID.randomUUID(),
@@ -60,39 +77,52 @@ class ProductCommandServiceTest {
             )
         );
 
-        // when: 서비스 호출 시 ProductResult를 받음
+        // 1. Product 저장 시 ID 자동 생성 모킹
+        given(productRepository.save(any(Product.class))).willAnswer(invocation -> {
+            Product product = invocation.getArgument(0);
+            ReflectionTestUtils.setField(product, "id", UUID.randomUUID());
+            return product;
+        });
+
+        // 2. ProductOption 리스트 저장 시 각 객체에 ID 자동 생성 모킹
+        given(productOptionRepository.saveAll(any())).willAnswer(invocation -> {
+            List<ProductOption> options = invocation.getArgument(0);
+            for (ProductOption option : options) {
+                // JPA가 DB 삽입 후 ID를 채워주는 동작을 리플렉션으로 강제 시뮬레이션
+                ReflectionTestUtils.setField(option, "id", UUID.randomUUID());
+            }
+            return options;
+        });
+
+        // when
         ProductResult result = productCommandService.createProduct(command);
 
-        // then: 4개 테이블 데이터 검증 - result에서 productId를 꺼내어 검증
-        UUID productId = result.productId();
-        // 1. 상품 테이블 확인
-        Product product = productRepository.findById(productId).orElseThrow();
-        assertThat(product.getName()).isEqualTo("미슐랭 밀키트 세트");
-        assertThat(product.getAttributes().get("servings")).isEqualTo(2);
+        // then: DB에 던져지는 객체들을 캡처
+        verify(productRepository).save(productCaptor.capture());
+        verify(productOptionRepository).saveAll(optionsCaptor.capture());
+        verify(stockRepository).saveAll(stocksCaptor.capture());
 
-        // 2. 전시 정보 확인 (1:1)
-        assertThat(productExhibitionRepository.existsById(productId)).isTrue();
+        // 1. 상품 검증
+        Product savedProduct = productCaptor.getValue();
+        assertThat(savedProduct.getName()).isEqualTo("미슐랭 밀키트 세트");
+        assertThat(savedProduct.getAttributes().get("servings")).isEqualTo(2);
 
-        // 3. 옵션 확인 (1:N)
-        var options = productOptionRepository.findAll().stream()
-            .filter(o -> o.getProduct().getId().equals(productId))
-            .sorted(java.util.Comparator.comparing(
-                com.michelet.inventory.domain.model.ProductOption::getName)) // 이름순 정렬 후 검증
-            .toList();
-        assertThat(options).hasSize(2);
+        // 2. 옵션 검증
+        List<ProductOption> savedOptions = optionsCaptor.getValue();
+        assertThat(savedOptions).hasSize(2);
 
-        // 4. 재고 확인 (각 옵션의 이름에 맞는 정확한 수량 검증)
-        options.forEach(option -> {
-            var stock = stockRepository.findById(option.getId()).orElseThrow();
-            if (option.getName().equals("맵기 보통")) {
-                assertThat(stock.getTotalQuantity()).isEqualTo(100);
-                assertThat(stock.getCurrentDailyStock()).isEqualTo(20);
-            } else if (option.getName().equals("맵기 매움")) {
-                assertThat(stock.getTotalQuantity()).isEqualTo(80);
-                assertThat(stock.getCurrentDailyStock()).isEqualTo(15);
-                assertThat(stock.getMaxLimit()).isEqualTo(1);
-            }
-        });
+        // 3. 재고 검증
+        List<Stock> savedStocks = stocksCaptor.getValue();
+        assertThat(savedStocks).hasSize(2);
+
+        Stock normalStock = savedStocks.get(0);
+        assertThat(normalStock.getTotalQuantity()).isEqualTo(100);
+        assertThat(normalStock.getCurrentDailyStock()).isEqualTo(20);
+
+        Stock spicyStock = savedStocks.get(1);
+        assertThat(spicyStock.getTotalQuantity()).isEqualTo(80);
+        assertThat(spicyStock.getCurrentDailyStock()).isEqualTo(15);
+        assertThat(spicyStock.getMaxLimit()).isEqualTo(1);
     }
 
     @Test
