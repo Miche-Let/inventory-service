@@ -1,6 +1,6 @@
 spring:
     datasource:
-        url: jdbc:postgresql://localhost:5432/michelet_db
+        url: jdbc:postgresql://db:5432/michelet_db
         username: admin
         password: admin
         driver-class-name: org.postgresql.Driver
@@ -9,10 +9,10 @@ spring:
             ddl-auto: update
     data:
         redis:
-            host: localhost
+            host: redis
             port: 6379
     kafka:
-        bootstrap-servers: localhost:9092
+        bootstrap-servers: kafka:9092
         producer:
             key-serializer: org.apache.kafka.common.serialization.StringSerializer
             value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -20,4 +20,4 @@ spring:
 eureka:
     client:
         service-url:
-            defaultZone: http://localhost:8761/eureka/
+            defaultZone: http://eureka-server:8761/eureka/
