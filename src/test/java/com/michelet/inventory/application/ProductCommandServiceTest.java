@@ -64,6 +64,7 @@ class ProductCommandServiceTest {
     @DisplayName("성공: 상품 등록 시 모든 도메인 모델(상품/전시/옵션/재고)이 올바른 값으로 저장소에 전달되어야 한다")
     void createProductUnitTest() {
         // given
+        LocalDateTime now = LocalDateTime.now();
         CreateProductCommand command = new CreateProductCommand(
             UUID.randomUUID(),
             "미슐랭 밀키트 세트",
@@ -71,8 +72,8 @@ class ProductCommandServiceTest {
             new BigDecimal("45000"),
             Map.of("servings", 2, "cookingTime", "20min"),
             new CreateProductCommand.ExhibitionCommand(
-                LocalDateTime.now().plusDays(1),
-                LocalDateTime.now().plusDays(30)
+                now.plusDays(1),
+                now.plusDays(30)
             ),
             List.of(
                 new CreateProductCommand.OptionCommand("맵기 보통", BigDecimal.ZERO, 100, 20, 2),
@@ -138,11 +139,12 @@ class ProductCommandServiceTest {
     @DisplayName("실패: 상품 가격이 음수일 경우 비즈니스 예외(Price VO)가 발생해야 한다")
     void createProduct_Fail_NegativePrice() {
         // given: 가격을 -1000원으로 설정
+        LocalDateTime now = LocalDateTime.now();
         CreateProductCommand command = new CreateProductCommand(
             UUID.randomUUID(), "불량 밀키트", ProductCategory.MEALKIT,
             new BigDecimal("-1000"),
             Map.of("servings", 2),
-            new CreateProductCommand.ExhibitionCommand(LocalDateTime.now(), LocalDateTime.now().plusDays(1)),
+            new CreateProductCommand.ExhibitionCommand(now, now.plusDays(1)),
             List.of(new CreateProductCommand.OptionCommand("옵션", BigDecimal.ZERO, 10, 5, 1))
         );
 

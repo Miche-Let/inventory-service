@@ -65,6 +65,7 @@ class ProductIntegrationTest {
     @DisplayName("상품 등록 통합 테스트: 서비스 호출 시 실제 DB에 상품이 저장되어야 한다")
     void createProduct_Integration() {
         // given
+        LocalDateTime now = LocalDateTime.now();
         CreateProductCommand command = new CreateProductCommand(
             UUID.randomUUID(),
             "테스트 통합 밀키트",
@@ -72,8 +73,8 @@ class ProductIntegrationTest {
             new BigDecimal("45000"),
             Map.of("servings", 2),
             new CreateProductCommand.ExhibitionCommand(
-                LocalDateTime.now().plusDays(1),
-                LocalDateTime.now().plusDays(30)
+                now.plusDays(1),
+                now.plusDays(30)
             ),
             List.of(
                 new CreateProductCommand.OptionCommand("기본", BigDecimal.ZERO, 100, 20, 2)
