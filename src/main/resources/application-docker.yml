@@ -1,12 +1,12 @@
 spring:
     datasource:
-        url: jdbc:postgresql://db:5432/michelet_db
-        username: admin
-        password: admin
+        url: ${DB_URL:jdbc:postgresql://db:5432/michelet_db}
+        username: ${DB_USERNAME:admin}
+        password: ${DB_PASSWORD:admin}
         driver-class-name: org.postgresql.Driver
     jpa:
         hibernate:
-            ddl-auto: update
+            ddl-auto: validate
     data:
         redis:
             host: redis
