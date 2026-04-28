@@ -18,7 +18,6 @@ public class AuditorConfig {
         return () -> Optional.ofNullable(SecurityContextHolder.getContext().getAuthentication())
             .filter(auth -> auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken))
             .map(auth -> {
-                // 현재는 테스트를 위해 랜덤 UUID를 반환하거나, auth.getName()을 UUID로 변환
                 // 실제 운영시에는 JWT에서 추출한 user_id를 사용!
                 try {
                     return UUID.fromString(auth.getName());
@@ -26,6 +25,7 @@ public class AuditorConfig {
                     return null;
                 }
             })
+            // TODO: User 서비스 및 JWT 연동 완료 시, 아래 임시 UUID 반환 코드를 삭제하고 Optional.empty()가 반환되도록 수정해야 함.
             .or(() -> Optional.of(UUID.fromString("00000000-0000-0000-0000-000000000001")));
     }
 
