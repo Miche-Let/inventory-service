@@ -50,8 +50,7 @@ dependencies {
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
-    testRuntimeOnly 'com.h2database:h2'
-    testImplementation 'com.h2database:h2' // 테스트용 메모리 DB 추가
+    testImplementation 'com.h2database:h2' // 테스트용 메모리 DB
 
     // JSONB 사용을 위한 유틸리티
     implementation 'io.hypersistence:hypersistence-utils-hibernate-63:3.7.0'
