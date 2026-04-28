@@ -10,6 +10,7 @@ import com.michelet.inventory.application.dto.CreateProductCommand;
 import com.michelet.inventory.application.dto.ProductResult;
 import com.michelet.inventory.domain.model.Product;
 import com.michelet.inventory.domain.model.ProductCategory;
+import com.michelet.inventory.domain.model.ProductExhibition;
 import com.michelet.inventory.domain.model.ProductOption;
 import com.michelet.inventory.domain.model.Stock;
 import com.michelet.inventory.domain.repository.ProductExhibitionRepository;
@@ -52,6 +53,8 @@ class ProductCommandServiceTest {
     // 리포지토리로 넘어가는 객체를 중간에 가로채기 위한 Captor
     @Captor
     private ArgumentCaptor<Product> productCaptor;
+    @Captor
+    private ArgumentCaptor<ProductExhibition> exhibitionCaptor;
     @Captor
     private ArgumentCaptor<List<ProductOption>> optionsCaptor;
     @Captor
@@ -99,6 +102,7 @@ class ProductCommandServiceTest {
 
         // then: DB에 던져지는 객체들을 캡처
         verify(productRepository).save(productCaptor.capture());
+        verify(productExhibitionRepository).save(exhibitionCaptor.capture());
         verify(productOptionRepository).saveAll(optionsCaptor.capture());
         verify(stockRepository).saveAll(stocksCaptor.capture());
 
@@ -107,11 +111,16 @@ class ProductCommandServiceTest {
         assertThat(savedProduct.getName()).isEqualTo("미슐랭 밀키트 세트");
         assertThat(savedProduct.getAttributes().get("servings")).isEqualTo(2);
 
-        // 2. 옵션 검증
+        // 2. 전시 정보 검증
+        ProductExhibition savedExhibition = exhibitionCaptor.getValue();
+        assertThat(savedExhibition.getProduct()).isEqualTo(savedProduct);
+        assertThat(savedExhibition.getStartAt()).isEqualTo(command.exhibition().startAt());
+
+        // 3. 옵션 검증
         List<ProductOption> savedOptions = optionsCaptor.getValue();
         assertThat(savedOptions).hasSize(2);
 
-        // 3. 재고 검증
+        // 4. 재고 검증
         List<Stock> savedStocks = stocksCaptor.getValue();
         assertThat(savedStocks).hasSize(2);
 
