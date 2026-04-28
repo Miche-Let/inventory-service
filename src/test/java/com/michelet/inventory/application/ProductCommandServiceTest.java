@@ -107,8 +107,11 @@ class ProductCommandServiceTest {
         verify(productOptionRepository).saveAll(optionsCaptor.capture());
         verify(stockRepository).saveAll(stocksCaptor.capture());
 
-        // 1. 상품 검증
+        // 1. 반환 결과(ProductResult) 및 상품 검증
         Product savedProduct = productCaptor.getValue();
+
+        assertThat(result).isNotNull();
+        assertThat(result.productId()).isEqualTo(savedProduct.getId());
         assertThat(savedProduct.getName()).isEqualTo("미슐랭 밀키트 세트");
         assertThat(savedProduct.getAttributes().get("servings")).isEqualTo(2);
 
