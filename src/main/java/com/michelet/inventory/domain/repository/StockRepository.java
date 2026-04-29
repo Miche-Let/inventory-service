@@ -11,4 +11,6 @@ public interface StockRepository {
     List<Stock> saveAll(List<Stock> stocks);
 
     Optional<Stock> findById(UUID id);
+
+    void deleteAll();
 }

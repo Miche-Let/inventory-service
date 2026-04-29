@@ -27,4 +27,9 @@ public class StockRepositoryImpl implements StockRepository {
     public Optional<Stock> findById(UUID id) {
         return jpaRepository.findById(id);
     }
+
+    @Override
+    public void deleteAll() {
+        jpaRepository.deleteAll();
+    }
 }
