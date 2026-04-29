@@ -69,11 +69,15 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
             .build();
     }
 
-    // 재고 규칙 - 검증 메서드
-    public void validateReserve(Integer requestQuantity) {
-        // 입력값 유효성 선제 검증
+    public void reserve(Integer requestQuantity) {
+        validateReserve(requestQuantity);
+        this.totalQuantity -= requestQuantity;
+        this.currentDailyStock -= requestQuantity;
+    }
+
+    private void validateReserve(Integer requestQuantity) {
         if (requestQuantity == null || requestQuantity <= 0) {
-            throw new IllegalArgumentException("예약 수량은 1개 이상이어야 합니다.");
+            throw new IllegalArgumentException("구매 수량은 1개 이상이어야 합니다.");
         }
 
         if (this.totalQuantity < requestQuantity) {
