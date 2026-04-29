@@ -3,6 +3,13 @@ spring:
         name: inventory-service
     profiles:
         active: local
+    jpa:
+        show-sql: false
+        properties:
+            hibernate:
+                format_sql: true
+                default_schema: inventory_service
+                hbm2ddl.create_namespaces: true
 
 server:
     port: 19900
