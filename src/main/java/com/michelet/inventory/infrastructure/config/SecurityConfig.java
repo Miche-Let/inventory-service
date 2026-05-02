@@ -18,9 +18,9 @@ public class SecurityConfig {
             .formLogin(AbstractHttpConfigurer::disable) // 기본 로그인 폼 비활성화
             .httpBasic(AbstractHttpConfigurer::disable) // Basic 인증 비활성화
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/admin/products/health").permitAll() // Health Check 허용
-                // 추후 Swagger나 Public 엔드포인트가 생기면 여기에 permitAll() 로 추가
-                .anyRequest().authenticated() // 그 외 모든 요청은 인증 필요 (새로운 API 추가 시 자동 적용)
+                .requestMatchers("/api/v1/products/**", "/api/v1/admin/products/**").permitAll()
+                .requestMatchers("/internal/**").permitAll()
+                .anyRequest().authenticated()
             );
 
         return http.build();

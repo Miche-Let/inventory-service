@@ -56,12 +56,15 @@ dependencies {
     implementation 'io.hypersistence:hypersistence-utils-hibernate-63:3.7.0'
 
     implementation 'com.github.Miche-Let:common:dev-SNAPSHOT'
+    implementation 'com.github.Miche-Let:common-auth-webmvc:0.1.3'
 
     implementation 'org.springframework.boot:spring-boot-starter-security'
 
     // Testcontainers (ProductIntegrationTest용)
     testImplementation 'org.testcontainers:postgresql'
     testImplementation 'org.testcontainers:junit-jupiter'
+
+    testImplementation 'org.springframework.security:spring-security-test'
 }
 
 dependencyManagement {

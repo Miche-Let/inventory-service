@@ -11,4 +11,10 @@ public interface StockRepository {
     List<Stock> saveAll(List<Stock> stocks);
 
     Optional<Stock> findById(UUID id);
+
+    void deleteAll();
+
+    //TODO 일일재고복구
+//    // 도메인 인터페이스에 스케줄러가 호출할 메서드
+//    int resetDailyStock();
 }
