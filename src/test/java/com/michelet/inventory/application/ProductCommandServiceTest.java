@@ -111,8 +111,10 @@ class ProductCommandServiceTest {
         Product savedProduct = productCaptor.getValue();
 
         assertThat(result).isNotNull();
-        assertThat(result.productId()).isNotNull(); // 명시적 null 아님 단언 추가
+        assertThat(result.productId()).isNotNull();
         assertThat(result.productId()).isEqualTo(savedProduct.getId());
+        assertThat(result.options()).hasSize(2); // 옵션이 2개 반환되었는지 검증
+        assertThat(result.options().get(0).optionId()).isNotNull(); // 발급된 ID 검증
 
         assertThat(savedProduct.getName()).isEqualTo("미슐랭 밀키트 세트");
         assertThat(savedProduct.getAttributes().get("servings")).isEqualTo(2);

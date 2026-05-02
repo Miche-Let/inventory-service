@@ -90,6 +90,8 @@ class ProductIntegrationTest {
 
         // then: 실제 DB(PostgreSQL 도커)에 데이터가 들어갔는지 검증
         assertThat(result).isNotNull();
+        assertThat(result.productId()).isNotNull();
+        assertThat(result.options()).isNotEmpty(); // 옵션 반환 여부 검증
 
         Product savedProduct = productRepository.findById(result.productId()).orElseThrow();
         assertThat(savedProduct.getName()).isEqualTo("테스트 통합 밀키트");
