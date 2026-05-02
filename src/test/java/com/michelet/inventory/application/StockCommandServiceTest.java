@@ -9,11 +9,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.michelet.inventory.application.dto.StockReservedEvent;
+import com.michelet.inventory.domain.exception.OutOfStockException;
 import com.michelet.inventory.domain.model.Stock;
 import com.michelet.inventory.domain.repository.StockRepository;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +23,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class StockCommandServiceTest {
@@ -33,6 +37,17 @@ class StockCommandServiceTest {
 
     @Mock
     private KafkaTemplate<String, Object> kafkaTemplate;
+
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
+    @BeforeEach
+    void setUp() {
+        given(transactionTemplate.execute(any())).willAnswer(invocation -> {
+            TransactionCallback<StockReservedEvent> action = invocation.getArgument(0);
+            return action.doInTransaction(null);
+        });
+    }
 
     @Test
     @DisplayName("성공: 재고가 충분하면 차감되고 Kafka 이벤트가 발행된다.")
@@ -65,10 +80,9 @@ class StockCommandServiceTest {
 
         // when & then
         assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("일일 판매 한도 초과"); // Stock.java의 실제 메시지랑 맞춤
+            .isInstanceOf(OutOfStockException.class);
 
-        // 예외가 터졌으므로 Repository와 Kafka는 아예 건드리지 않아야 함
+        // 예외가 터졌으므로 Kafka 전송은 절대 일어나지 않아야 함
         verifyNoInteractions(kafkaTemplate);
     }
 }
