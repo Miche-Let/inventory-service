@@ -1,6 +1,9 @@
 package com.michelet.inventory.domain.model;
 
 import com.michelet.common.entity.BaseEntity;
+import com.michelet.inventory.domain.exception.MaxLimitExceededException;
+import com.michelet.inventory.domain.exception.OutOfStockException;
+import com.michelet.inventory.domain.exception.SoldOutException;
 import com.michelet.inventory.domain.model.vo.Quantity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -55,10 +58,10 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         }
         Integer actualMaxLimit = (maxLimit == null) ? 10 : maxLimit;
 
-        // 2. VO를 통한 비즈니스 규칙 검증 - 생성하는 시점에 VO를 호출하여 0 미만인지 검증
-        new Quantity(totalQuantity);
-        new Quantity(dailyLimit);
-        new Quantity(actualMaxLimit);
+        // 2. VO를 통한 비즈니스 규칙 검증
+        Quantity.validate(totalQuantity);
+        Quantity.validate(dailyLimit);
+        Quantity.validate(actualMaxLimit);
 
         // 빌더가 위에서 정의한 private Stock 생성자를 호출하므로 로직이 보장됨
         return Stock.builder()
@@ -81,13 +84,13 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         }
 
         if (this.totalQuantity < requestQuantity) {
-            throw new IllegalArgumentException("전체 재고 부족");
+            throw new SoldOutException();
         }
         if (this.currentDailyStock < requestQuantity) {
-            throw new IllegalArgumentException("일일 판매 한도 초과");
+            throw new OutOfStockException();
         }
         if (requestQuantity > this.maxLimit) {
-            throw new IllegalArgumentException("1인당 최대 구매 수량 초과");
+            throw new MaxLimitExceededException(this.maxLimit);
         }
     }
 
