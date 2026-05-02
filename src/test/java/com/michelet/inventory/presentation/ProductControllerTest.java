@@ -152,6 +152,33 @@ public class ProductControllerTest {
             .andDo(document("{class-name}/{method-name}"));
     }
 
+    // 익명(헤더 누락) 접근 시 401 테스트 추가
+    @Test
+    @DisplayName("실패: 인증 헤더(X-User-Id, X-User-Role) 없이 상품 등록을 시도하면 401 Unauthorized 에러가 발생해야 한다")
+    void createProduct_MissingHeaders_returns401() throws Exception {
+        String requestJson = """
+            {
+                "restaurantId": "550e8400-e29b-41d4-a716-446655440000",
+                "name": "익명 밀키트",
+                "category": "MEALKIT",
+                "basePrice": 45000,
+                "exhibition": {
+                    "startAt": "2026-05-01T10:00:00"
+                },
+                "options": [
+                    {"name": "기본", "addPrice": 0, "totalQuantity": 100, "dailyLimit": 20, "maxLimit": 2}
+                ]
+            }
+            """;
+
+        mockMvc.perform(post("/api/v1/products")
+                // 인증 헤더를 아무것도 넣지 않음
+                .content(requestJson)
+                .contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isUnauthorized()) // 인터셉터에서 UserContext를 만들지 못해 401 던짐
+            .andDo(document("{class-name}/{method-name}"));
+    }
+
     @Test
     @DisplayName("실패: 필수 데이터(exhibition 등) 누락 시 400 에러를 반환해야 한다")
     void createProductFailInvalidInput() throws Exception {

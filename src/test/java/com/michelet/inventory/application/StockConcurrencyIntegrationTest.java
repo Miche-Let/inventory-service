@@ -117,15 +117,16 @@ class StockConcurrencyIntegrationTest {
         // 대기 중이던 쓰레드를 동시에 실행 시작 (출발 신호)
         startLatch.countDown();
 
-        // 무한 대기로 인한 테스트 행(Hang) 현상을 막기 위해 타임아웃 적용
-        boolean completed = doneLatch.await(30, TimeUnit.SECONDS);
-        assertThat(completed).withFailMessage("쓰레드 작업이 지정된 시간 내에 완료되지 않았습니다.").isTrue();
-
-        // 테스트 스레드 풀 자원 정상 종료 및 대기
-        executorService.shutdown();
-        if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
-            executorService.shutdownNow();
-            assertThat(false).withFailMessage("ExecutorService가 정상적으로 종료되지 않았습니다.").isTrue();
+        // 스레드 자원 누수를 막기 위해 무조건 shutdown 로직이 실행되도록 try-finally 적용
+        try {
+            boolean completed = doneLatch.await(30, TimeUnit.SECONDS);
+            assertThat(completed).withFailMessage("쓰레드 작업이 지정된 시간 내에 완료되지 않았습니다.").isTrue();
+        } finally {
+            executorService.shutdown();
+            if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+                assertThat(false).withFailMessage("ExecutorService가 정상적으로 종료되지 않았습니다.").isTrue();
+            }
         }
 
         // then

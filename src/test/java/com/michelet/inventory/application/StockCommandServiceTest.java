@@ -1,7 +1,9 @@
 package com.michelet.inventory.application;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.times;
@@ -20,10 +22,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -42,6 +47,10 @@ class StockCommandServiceTest {
     @Mock
     private TransactionTemplate transactionTemplate;
 
+    // 카프카로 전송된 이벤트를 낚아채서 내부 값을 검증하기 위한 Captor
+    @Captor
+    private ArgumentCaptor<StockReservedEvent> eventCaptor;
+
     @BeforeEach
     void setUp() {
         given(transactionTemplate.execute(any())).willAnswer(invocation -> {
@@ -59,9 +68,7 @@ class StockCommandServiceTest {
         ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
-
-        // NPE 방지를 위해 KafkaTemplate.send()가 정상 완료된 Future를 반환하도록 넓은 범위의 Mock 매칭(any) 설정
-        given(kafkaTemplate.send(any(), any(), any()))
+        given(kafkaTemplate.send(eq("stock.reserved"), eq(optionId.toString()), any(StockReservedEvent.class)))
             .willReturn(CompletableFuture.completedFuture(null));
 
         // when
@@ -69,8 +76,12 @@ class StockCommandServiceTest {
 
         // then
         verify(stockRepository, times(1)).save(any(Stock.class));
-        verify(kafkaTemplate, times(1)).send(eq("stock.reserved"), eq(optionId.toString()),
-            any(StockReservedEvent.class));
+        // 캡처를 통해 Kafka로 넘어간 페이로드(이벤트 객체)의 상세 데이터 검증
+        verify(kafkaTemplate, times(1)).send(eq("stock.reserved"), eq(optionId.toString()), eventCaptor.capture());
+        StockReservedEvent capturedEvent = eventCaptor.getValue();
+        assertThat(capturedEvent.optionId()).isEqualTo(optionId);
+        assertThat(capturedEvent.totalQuantity()).isEqualTo(98); // 100 - 2
+        assertThat(capturedEvent.currentDailyStock()).isEqualTo(48); // 50 - 2
     }
 
     @Test
@@ -90,4 +101,61 @@ class StockCommandServiceTest {
         // 예외가 터졌으므로 Kafka 전송은 절대 일어나지 않아야 함
         verifyNoInteractions(kafkaTemplate);
     }
+
+    // N번 시도 후 성공하는 낙관적 락 재시도 테스트
+    @Test
+    @DisplayName("재시도 성공: 낙관적 락 충돌이 발생해도 3회 이내면 재시도하여 성공한다.")
+    void reserveStock_Retry_Success() {
+        // given
+        UUID optionId = UUID.randomUUID();
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
+
+        // DB에서 최신 데이터를 다시 읽어오는 동작을 시뮬레이션 (매 호출마다 새로운 Stock 객체 반환)
+        given(stockRepository.findById(optionId)).willAnswer(invocation ->
+            Optional.of(Stock.create(optionId, 100, 50, 10))
+        );
+
+        // 첫 번째, 두 번째는 예외 발생시키고 세 번째에 정상 통과
+        given(stockRepository.save(any(Stock.class)))
+            .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId))
+            .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId))
+            .willReturn(null);
+
+        given(kafkaTemplate.send(anyString(), anyString(), any()))
+            .willReturn(CompletableFuture.completedFuture(null));
+
+        // when
+        stockCommandService.reserveStockWithRetry(request);
+
+        // then: save가 3번 호출되었는지, 이벤트가 정상적으로 1번 발행되었는지 확인
+        verify(stockRepository, times(3)).save(any(Stock.class));
+        verify(kafkaTemplate, times(1)).send(eq("stock.reserved"), eq(optionId.toString()),
+            any(StockReservedEvent.class));
+    }
+
+    // 최대 재시도 횟수 초과 실패 테스트
+    @Test
+    @DisplayName("재시도 실패: 3회를 초과하여 낙관적 락 충돌이 발생하면 예외를 던진다.")
+    void reserveStock_Retry_Fail_MaxAttempts() {
+        // given
+        UUID optionId = UUID.randomUUID();
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
+
+        given(stockRepository.findById(optionId)).willAnswer(invocation ->
+            Optional.of(Stock.create(optionId, 100, 50, 10))
+        );
+
+        // 항상 충돌 발생
+        given(stockRepository.save(any(Stock.class)))
+            .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId));
+
+        // when & then: 3번 시도 후 IllegalStateException 발생 검증
+        assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("주문량이 많아 재고 처리에 실패했습니다");
+
+        verify(stockRepository, times(3)).save(any(Stock.class)); // 정확히 3번 시도됨
+        verifyNoInteractions(kafkaTemplate); // 실패했으므로 카프카 메시지 발행 안 됨
+    }
+
 }
