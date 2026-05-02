@@ -11,10 +11,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.michelet.common.auth.webmvc.config.AuthWebMvcAutoConfiguration;
 import com.michelet.inventory.application.ProductCommandService;
 import com.michelet.inventory.application.dto.ProductResult;
+import com.michelet.inventory.infrastructure.config.SecurityConfig;
 import java.util.UUID;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +26,7 @@ import org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfigurat
 import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.restdocs.AutoConfigureRestDocs;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.restdocs.payload.JsonFieldType;
@@ -41,7 +43,8 @@ import org.springframework.test.web.servlet.MockMvc;
 })
 @AutoConfigureRestDocs(uriScheme = "http", uriHost = "localhost", uriPort = 19900)
 @ActiveProfiles("test")
-@Import(RestDocsConfig.class)
+@EnableAspectJAutoProxy // @RequireRole AOP가 동작하려면 필수!
+@Import({RestDocsConfig.class, SecurityConfig.class, AuthWebMvcAutoConfiguration.class})
 public class ProductControllerTest {
 
     @Autowired
@@ -62,9 +65,8 @@ public class ProductControllerTest {
             .andDo(document("{class-name}/{method-name}"));
     }
 
-    @Disabled("ROLE 검증 반영 필요")
     @Test
-    @DisplayName("성공: 상품 등록 시 모든 필드가 정상이면 200을 반환한다")
+    @DisplayName("성공: 상품 등록 시 모든 필드가 정상이면 200을 반환한다 (OWNER 권한)")
     void createProduct() throws Exception {
         // Given
         UUID productId = UUID.randomUUID();
@@ -88,7 +90,9 @@ public class ProductControllerTest {
             """;
 
         // When & Then
-        mockMvc.perform(post("/api/v1/admin/products")
+        mockMvc.perform(post("/api/v1/products")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "OWNER")
                 .content(requestJson)
                 .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
@@ -120,7 +124,34 @@ public class ProductControllerTest {
             ));
     }
 
-    @Disabled("ROLE 검증 반영 필요")
+    @Test
+    @DisplayName("실패: OWNER 권한이 아닌 사용자가 상품 등록을 시도하면 403 Forbidden 에러가 발생해야 한다")
+    void createProduct_Unauthorized_returns403() throws Exception {
+        String requestJson = """
+            {
+                "restaurantId": "550e8400-e29b-41d4-a716-446655440000",
+                "name": "권한 없는 밀키트",
+                "category": "MEALKIT",
+                "basePrice": 45000,
+                "exhibition": {
+                    "startAt": "2026-05-01T10:00:00"
+                },
+                "options": [
+                    {"name": "기본", "addPrice": 0, "totalQuantity": 100, "dailyLimit": 20, "maxLimit": 2}
+                ]
+            }
+            """;
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/products")
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "USER")
+                .content(requestJson)
+                .contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isForbidden())
+            .andDo(document("{class-name}/{method-name}"));
+    }
+
     @Test
     @DisplayName("실패: 필수 데이터(exhibition 등) 누락 시 400 에러를 반환해야 한다")
     void createProductFailInvalidInput() throws Exception {
@@ -134,7 +165,10 @@ public class ProductControllerTest {
             """;
 
         // When & Then
-        mockMvc.perform(post("/api/v1/admin/products")
+        mockMvc.perform(post("/api/v1/products")
+                // 인터셉터와 AOP를 모두 무사 통과하고, Validation 단계에서 걸리도록 설정
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "OWNER")
                 .content(invalidJson)
                 .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isBadRequest()) // DTO 검증(@Valid)에 의해 400 반환

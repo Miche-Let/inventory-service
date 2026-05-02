@@ -63,6 +63,8 @@ dependencies {
     // Testcontainers (ProductIntegrationTest용)
     testImplementation 'org.testcontainers:postgresql'
     testImplementation 'org.testcontainers:junit-jupiter'
+
+    testImplementation 'org.springframework.security:spring-security-test'
 }
 
 dependencyManagement {
