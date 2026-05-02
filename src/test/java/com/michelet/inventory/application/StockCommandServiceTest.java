@@ -11,7 +11,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.michelet.inventory.application.dto.StockReservedEvent;
+import com.michelet.inventory.domain.exception.MaxLimitExceededException;
 import com.michelet.inventory.domain.exception.OutOfStockException;
+import com.michelet.inventory.domain.exception.SoldOutException;
 import com.michelet.inventory.domain.model.Stock;
 import com.michelet.inventory.domain.repository.StockRepository;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
@@ -102,6 +104,42 @@ class StockCommandServiceTest {
         verifyNoInteractions(kafkaTemplate);
     }
 
+    // 전체 재고 부족 예외 테스트
+    @Test
+    @DisplayName("실패: 요청 수량이 전체 남은 재고보다 많으면 예외가 발생한다.")
+    void reserveStock_Fail_NotEnoughTotalQuantity() {
+        // given
+        UUID optionId = UUID.randomUUID();
+        Stock stock = Stock.create(optionId, 1, 50, 10); // 전체 재고 1개
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2); // 2개 요청
+
+        given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
+
+        // when & then
+        assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
+            .isInstanceOf(SoldOutException.class);
+
+        verifyNoInteractions(kafkaTemplate);
+    }
+
+    // 1인당 구매 한도 초과 예외 테스트
+    @Test
+    @DisplayName("실패: 요청 수량이 1인당 구매 한도를 초과하면 예외가 발생한다.")
+    void reserveStock_Fail_MaxLimitExceeded() {
+        // given
+        UUID optionId = UUID.randomUUID();
+        Stock stock = Stock.create(optionId, 100, 50, 1); // 1인당 1개 제한
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2); // 2개 요청
+
+        given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
+
+        // when & then
+        assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
+            .isInstanceOf(MaxLimitExceededException.class);
+
+        verifyNoInteractions(kafkaTemplate);
+    }
+
     // N번 시도 후 성공하는 낙관적 락 재시도 테스트
     @Test
     @DisplayName("재시도 성공: 낙관적 락 충돌이 발생해도 3회 이내면 재시도하여 성공한다.")
@@ -127,10 +165,16 @@ class StockCommandServiceTest {
         // when
         stockCommandService.reserveStockWithRetry(request);
 
-        // then: save가 3번 호출되었는지, 이벤트가 정상적으로 1번 발행되었는지 확인
+        // then - findById가 매 재시도마다 호출되었는지(총 3회) 검증
+        verify(stockRepository, times(3)).findById(optionId);
         verify(stockRepository, times(3)).save(any(Stock.class));
-        verify(kafkaTemplate, times(1)).send(eq("stock.reserved"), eq(optionId.toString()),
-            any(StockReservedEvent.class));
+
+        // 카프카 페이로드 내부 필드 검증
+        verify(kafkaTemplate, times(1)).send(eq("stock.reserved"), eq(optionId.toString()), eventCaptor.capture());
+        StockReservedEvent capturedEvent = eventCaptor.getValue();
+        assertThat(capturedEvent.optionId()).isEqualTo(optionId);
+        assertThat(capturedEvent.totalQuantity()).isEqualTo(98);
+        assertThat(capturedEvent.currentDailyStock()).isEqualTo(48);
     }
 
     // 최대 재시도 횟수 초과 실패 테스트
@@ -154,6 +198,7 @@ class StockCommandServiceTest {
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("주문량이 많아 재고 처리에 실패했습니다");
 
+        verify(stockRepository, times(3)).findById(optionId);
         verify(stockRepository, times(3)).save(any(Stock.class)); // 정확히 3번 시도됨
         verifyNoInteractions(kafkaTemplate); // 실패했으므로 카프카 메시지 발행 안 됨
     }
