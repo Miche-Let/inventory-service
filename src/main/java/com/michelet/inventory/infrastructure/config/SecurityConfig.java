@@ -19,8 +19,7 @@ public class SecurityConfig {
             .httpBasic(AbstractHttpConfigurer::disable) // Basic 인증 비활성화
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/products/**", "/api/v1/admin/products/**").permitAll()
-                // 내부 통신(internal)도 최소한의 인증을 요구하도록 permitAll()에서 authenticated()로 변경
-                .requestMatchers("/internal/**").authenticated() //TODO 내부 통신 완성되면 구체적 권한으로 수정
+                .requestMatchers("/internal/**").permitAll()
                 .anyRequest().authenticated()
             );
 
