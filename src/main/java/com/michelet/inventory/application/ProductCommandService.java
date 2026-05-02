@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -100,10 +102,18 @@ public class ProductCommandService {
             optionEventDtos
         );
 
-        // 6. product.created 토픽으로 메시지 발행 (Partition Key로 productId 사용)
-        log.info("상품 등록 이벤트 발행 시작: productId={}", event.productId());
-        kafkaTemplate.send("product.created", event.productId().toString(), event);
-        log.info("상품 등록 이벤트 발행 완료: productId={}", event.productId());
+        // 6. DB 커밋 완료 후에만 카프카 메시지 전송 (정합성 보장) 및 Callback 확인
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    sendKafkaMessageWithCallback(event);
+                }
+            });
+        } else {
+            // 단위 테스트 등 트랜잭션 동기화가 활성화되지 않은 환경을 위한 폴백
+            sendKafkaMessageWithCallback(event);
+        }
 
         // 7. 결과 반환 (옵션 리스트 포함)
         List<ProductResult.OptionResult> optionResults = savedOptions.stream()
@@ -111,5 +121,20 @@ public class ProductCommandService {
             .toList();
 
         return new ProductResult(product.getId(), optionResults);
+    }
+
+    // 카프카 전송 및 콜백 확인용 내부 메서드
+    private void sendKafkaMessageWithCallback(ProductCreatedEvent event) {
+        log.info("DB 커밋 완료. 상품 등록 이벤트 발행 요청: productId={}", event.productId());
+        kafkaTemplate.send("product.created", event.productId().toString(), event)
+            .whenComplete((result, ex) -> {
+                if (ex == null) {
+                    log.info("상품 등록 이벤트 발행 실제 성공: productId={}, offset={}",
+                        event.productId(), result.getRecordMetadata().offset());
+                } else {
+                    log.error("상품 등록 이벤트 발행 실패 (Dead Letter Queue 처리 필요): productId={}",
+                        event.productId(), ex);
+                }
+            });
     }
 }

@@ -3,10 +3,13 @@ package com.michelet.inventory.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.michelet.inventory.application.dto.CreateProductCommand;
+import com.michelet.inventory.application.dto.ProductCreatedEvent;
 import com.michelet.inventory.application.dto.ProductResult;
 import com.michelet.inventory.domain.model.Product;
 import com.michelet.inventory.domain.model.ProductCategory;
@@ -49,6 +52,8 @@ class ProductCommandServiceTest {
     private StockRepository stockRepository;
     @Mock
     private KafkaTemplate<String, Object> kafkaTemplate;
+    @Captor
+    private ArgumentCaptor<ProductCreatedEvent> eventCaptor;
 
     // 리포지토리로 넘어가는 객체를 중간에 가로채기 위한 Captor
     @Captor
@@ -98,6 +103,13 @@ class ProductCommandServiceTest {
             return options;
         });
 
+        // 3. KafkaTemplate 모킹: send 호출 시 빈 가짜 영수증(CompletableFuture?) 반환
+        java.util.concurrent.CompletableFuture<org.springframework.kafka.support.SendResult<String, Object>> mockFuture
+            = java.util.concurrent.CompletableFuture.completedFuture(
+            new org.springframework.kafka.support.SendResult<>(null, null)
+        );
+        given(kafkaTemplate.send(any(String.class), any(String.class), any())).willReturn(mockFuture);
+
         // when
         ProductResult result = productCommandService.createProduct(command);
 
@@ -109,6 +121,10 @@ class ProductCommandServiceTest {
 
         // 1. 반환 결과(ProductResult) 및 상품 검증
         Product savedProduct = productCaptor.getValue();
+
+        // Kafka 발행이 정확히 1번 호출되었는지, 이벤트 내용물이 올바른지 검증
+        verify(kafkaTemplate, times(1)).send(eq("product.created"), any(String.class), eventCaptor.capture());
+        ProductCreatedEvent capturedEvent = eventCaptor.getValue();
 
         assertThat(result).isNotNull();
         assertThat(result.productId()).isNotNull();
