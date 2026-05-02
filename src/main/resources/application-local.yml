@@ -24,4 +24,4 @@ eureka:
             defaultZone: http://localhost:8761/eureka/
 
 jwt:
-    secret: ${JWT_SECRET:michelet-secret-key-for-authentication}
+    secret: ${JWT_SECRET}
