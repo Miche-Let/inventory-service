@@ -15,6 +15,7 @@ import com.michelet.inventory.domain.repository.StockRepository;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -58,6 +59,10 @@ class StockCommandServiceTest {
         ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
+
+        // NPE 방지를 위해 KafkaTemplate.send()가 정상 완료된 Future를 반환하도록 넓은 범위의 Mock 매칭(any) 설정
+        given(kafkaTemplate.send(any(), any(), any()))
+            .willReturn(CompletableFuture.completedFuture(null));
 
         // when
         stockCommandService.reserveStockWithRetry(request);
