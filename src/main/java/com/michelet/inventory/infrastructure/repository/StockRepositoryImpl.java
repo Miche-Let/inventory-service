@@ -11,25 +11,31 @@ import org.springframework.stereotype.Repository;
 @Repository
 @RequiredArgsConstructor
 public class StockRepositoryImpl implements StockRepository {
-    private final JpaStockRepository jpaRepository;
+    private final JpaStockRepository jpaStockRepository;
 
     @Override
     public Stock save(Stock stock) {
-        return jpaRepository.save(stock);
+        return jpaStockRepository.save(stock);
     }
 
     @Override
     public List<Stock> saveAll(List<Stock> stocks) {
-        return jpaRepository.saveAll(stocks);
+        return jpaStockRepository.saveAll(stocks);
     }
 
     @Override
     public Optional<Stock> findById(UUID id) {
-        return jpaRepository.findById(id);
+        return jpaStockRepository.findById(id);
     }
 
     @Override
     public void deleteAll() {
-        jpaRepository.deleteAll();
+        jpaStockRepository.deleteAll();
     }
+
+    //TODO 일일재고복구
+//    @Override
+//    public int resetDailyStock() {
+//        return jpaStockRepository.resetDailyStock();
+//    }
 }

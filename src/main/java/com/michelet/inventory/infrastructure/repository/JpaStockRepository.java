@@ -5,4 +5,9 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface JpaStockRepository extends JpaRepository<Stock, UUID> {
+
+    //TODO 일일재고복구 - 벌크 업데이트 쿼리
+//    @Modifying(clearAutomatically = true)
+//    @Query("UPDATE p_stocks s SET s.currentDailyStock = s.dailyLimit, s.version = s.version + 1 WHERE s.currentDailyStock < s.dailyLimit")
+//    int resetDailyStock();
 }

@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.michelet.inventory.domain.model.Stock;
 import com.michelet.inventory.domain.repository.StockRepository;
+import com.michelet.inventory.infrastructure.repository.JpaStockRepository;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,9 +18,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -37,15 +41,22 @@ class StockConcurrencyIntegrationTest {
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.datasource.driver-class-name", postgres::getDriverClassName);
-        // 테스트 시 Kafka 연결을 끊어 오류 방지
-        registry.add("spring.kafka.bootstrap-servers", () -> "localhost:9092");
     }
 
     @Autowired
     private StockCommandService stockCommandService;
 
+    // 조회 로직을 위한 도메인 레포지토리
     @Autowired
     private StockRepository stockRepository;
+
+    // 테스트 클린업을 위한 JpaRepository 직접 의존
+    @Autowired
+    private JpaStockRepository jpaStockRepository;
+
+    // 테스트 환경에는 실제 카프카가 없으니까 가짜 객체로 덮어씌워서 타임아웃 에러를 방지
+    @MockitoBean
+    private KafkaTemplate<String, Object> kafkaTemplate;
 
     private UUID testOptionId;
 
@@ -59,7 +70,8 @@ class StockConcurrencyIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        stockRepository.deleteAll();
+        // 도메인 레포지토리가 아닌 인프라 레포지토리를 통해 클린업
+        jpaStockRepository.deleteAll();
     }
 
     @Test
@@ -68,7 +80,9 @@ class StockConcurrencyIntegrationTest {
         // given
         int threadCount = 100;
         ExecutorService executorService = Executors.newFixedThreadPool(32);
-        CountDownLatch latch = new CountDownLatch(threadCount);
+        // 모든 쓰레드가 동시에 출발하도록 제어하는 startLatch
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threadCount);
 
         // 성공한 횟수를 안전하게 카운트하기 위한 변수
         AtomicInteger successCount = new AtomicInteger();
@@ -79,23 +93,39 @@ class StockConcurrencyIntegrationTest {
         for (int i = 0; i < threadCount; i++) {
             executorService.submit(() -> {
                 try {
+                    // 모든 작업 쓰레드는 여기서 대기하며 신호를 기다림
+                    startLatch.await();
+
                     stockCommandService.reserveStockWithRetry(request);
                     successCount.incrementAndGet(); // 에러 없이 통과하면 성공 횟수 1 증가
                 } catch (Exception e) {
                     // 낙관적 락 재시도 3회 모두 실패한 스레드들은 예외를 던지며 이곳으로 옴
                     System.out.println("차감 실패: " + e.getMessage());
                 } finally {
-                    latch.countDown();
+                    doneLatch.countDown();
                 }
             });
         }
-        latch.await();
+        // 대기 중이던 100개의 쓰레드를 동시에 실행 시작 (출발 신호)
+        startLatch.countDown();
+
+        // 모든 작업이 끝날 때까지 대기
+        doneLatch.await();
+
+        // 테스트 스레드 풀 자원 정상 종료 및 대기
+        executorService.shutdown();
+        executorService.awaitTermination(5, TimeUnit.SECONDS);
 
         // then
         Stock findStock = stockRepository.findById(testOptionId).orElseThrow();
         int actualSuccess = successCount.get();
 
         System.out.println("최종 성공 횟수: " + actualSuccess + " / " + threadCount);
+
+        // 단 한 번도 성공하지 못한 경우(실제로는 버그)를 무조건 통과시켜버리는 False Positive 방지
+        assertThat(actualSuccess).isGreaterThan(0);
+        // 성공 횟수가 전체 스레드 수를 초과할 수 없음
+        assertThat(actualSuccess).isLessThanOrEqualTo(threadCount);
 
         // 200개에서 성공한 횟수만큼 차감되었는지 검증
         assertThat(findStock.getTotalQuantity()).isEqualTo(200 - actualSuccess);
