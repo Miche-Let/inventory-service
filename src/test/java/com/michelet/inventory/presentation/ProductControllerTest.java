@@ -100,6 +100,10 @@ public class ProductControllerTest {
                 .content(requestJson)
                 .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.options").isArray())
+            .andExpect(jsonPath("$.data.options").isNotEmpty())
+            .andExpect(jsonPath("$.data.options[0].optionId").exists())
+            .andExpect(jsonPath("$.data.options[0].name").value("기본"))
             .andDo(document("{class-name}/{method-name}",
                 // 요청 필드 문서화
                 relaxedRequestFields(
