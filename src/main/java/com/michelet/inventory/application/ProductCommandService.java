@@ -67,6 +67,14 @@ public class ProductCommandService {
         // 반복문에서 꺼내 쓸 원본 요청 옵션 리스트
         List<CreateProductCommand.OptionCommand> requestOptions = command.options();
 
+        // 리스트 크기 불일치 시 명확한 에러 발생
+        if (savedOptions.size() != requestOptions.size()) {
+            throw new IllegalStateException(
+                String.format("저장된 옵션 개수(%d)와 요청된 옵션 개수(%d)가 일치하지 않습니다.",
+                    savedOptions.size(), requestOptions.size())
+            );
+        }
+
         for (int i = 0; i < savedOptions.size(); i++) {
             CreateProductCommand.OptionCommand reqOption = requestOptions.get(i);
             ProductOption dbOption = savedOptions.get(i);
