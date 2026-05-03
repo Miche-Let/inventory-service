@@ -22,3 +22,5 @@ inventory:
             product-created: "product.created"
             reserved: "stock.reserved"
             restored: "stock.restored"
+            status-changed: "product.status-changed"
+            daily-reset: "stock.daily-reset"
