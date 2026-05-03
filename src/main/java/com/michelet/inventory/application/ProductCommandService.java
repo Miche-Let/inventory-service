@@ -97,7 +97,8 @@ public class ProductCommandService {
                 dbOption.getName(),
                 dbOption.getAddPrice(),
                 reqOption.totalQuantity(),
-                reqOption.dailyLimit() // currentDailyStock은 dailyLimit으로 초기화
+                reqOption.dailyLimit(), // currentDailyStock은 dailyLimit으로 초기화
+                reqOption.dailyLimit()
             ));
         }
         stockRepository.saveAll(stocks);
