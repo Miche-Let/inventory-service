@@ -214,25 +214,36 @@ class StockCommandServiceTest {
     }
 
     @Test
-    @DisplayName("성공: 재고 복구 경로 정상 동작 및 Kafka 발행 테스트")
+    @DisplayName("성공: 재고 복구 경로 정상 동작 및 Kafka 발행 테스트 (total/daily 모두 검증)")
     void restoreStock_Success() {
         UUID optionId = UUID.randomUUID();
+        // 1. 초기 재고 100개, 일일 재고 50개 생성
         Stock stock = Stock.create(optionId, 100, 50, 10);
+
+        // 2. 소비된 상태를 시뮬레이션하기 위해 미리 2개를 차감 (total: 98, daily: 48)
+        stock.reserve(2);
+
+        // 3. 다시 2개를 복구해 달라는 요청
         RestoreStockRequest request = new RestoreStockRequest(optionId, 2, null);
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
         given(kafkaTemplate.send(eq("stock.restored"), eq(optionId.toString()), any(StockRestoredEvent.class)))
             .willReturn(CompletableFuture.completedFuture(null));
 
+        // when
         stockCommandService.restoreStockWithRetry(request);
 
+        // then
         verify(stockRepository, times(1)).save(any(Stock.class));
         verify(kafkaTemplate, times(1)).send(eq("stock.restored"), eq(optionId.toString()),
             restoredEventCaptor.capture());
 
         StockRestoredEvent event = restoredEventCaptor.getValue();
         assertThat(event.optionId()).isEqualTo(optionId);
-        assertThat(event.totalQuantity()).isEqualTo(102);
+
+        // totalQuantity와 currentDailyStock이 모두 100과 50으로 정상 복구되었는지 검증
+        assertThat(event.totalQuantity()).isEqualTo(100);
+        assertThat(event.currentDailyStock()).isEqualTo(50);
     }
 
     @Test
