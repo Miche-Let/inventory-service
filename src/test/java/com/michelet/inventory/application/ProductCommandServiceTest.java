@@ -146,6 +146,8 @@ class ProductCommandServiceTest {
         assertThat(capturedEvent.name()).isEqualTo("미슐랭 밀키트 세트");
         assertThat(capturedEvent.category()).isEqualTo(ProductCategory.MEALKIT.name());
 
+        assertThat(capturedEvent.basePrice()).isEqualByComparingTo(command.basePrice());
+
         assertThat(result).isNotNull();
         assertThat(result.productId()).isNotNull();
         assertThat(result.productId()).isEqualTo(savedProduct.getId());
