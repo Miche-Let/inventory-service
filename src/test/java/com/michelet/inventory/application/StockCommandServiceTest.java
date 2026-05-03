@@ -78,7 +78,7 @@ class StockCommandServiceTest {
         // given
         UUID optionId = UUID.randomUUID();
         Stock stock = Stock.create(optionId, 100, 50, 10);
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null);
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
         given(kafkaTemplate.send(eq("stock.reserved"), eq(optionId.toString()), any(StockReservedEvent.class)))
@@ -103,7 +103,7 @@ class StockCommandServiceTest {
         // given
         UUID optionId = UUID.randomUUID();
         Stock stock = Stock.create(optionId, 100, 1, 10); // 일일 재고 1개
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2); // 2개 요청
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null); // 2개 요청
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
@@ -122,7 +122,7 @@ class StockCommandServiceTest {
         // given
         UUID optionId = UUID.randomUUID();
         Stock stock = Stock.create(optionId, 1, 50, 10); // 전체 재고 1개
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2); // 2개 요청
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null); // 2개 요청
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
@@ -140,7 +140,7 @@ class StockCommandServiceTest {
         // given
         UUID optionId = UUID.randomUUID();
         Stock stock = Stock.create(optionId, 100, 50, 1); // 1인당 1개 제한
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2); // 2개 요청
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null); //2개 요청
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
@@ -157,7 +157,7 @@ class StockCommandServiceTest {
     void reserveStock_Retry_Success() {
         // given
         UUID optionId = UUID.randomUUID();
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null);
 
         // DB에서 최신 데이터를 다시 읽어오는 동작을 시뮬레이션 (매 호출마다 새로운 Stock 객체 반환)
         given(stockRepository.findById(optionId)).willAnswer(invocation ->
@@ -194,7 +194,7 @@ class StockCommandServiceTest {
     void reserveStock_Retry_Fail_MaxAttempts() {
         // given
         UUID optionId = UUID.randomUUID();
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null);
 
         given(stockRepository.findById(optionId)).willAnswer(invocation ->
             Optional.of(Stock.create(optionId, 100, 50, 10))
