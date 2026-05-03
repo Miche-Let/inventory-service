@@ -23,9 +23,8 @@ public record ProductCreatedEvent(
         Objects.requireNonNull(restaurantId, "restaurantId는 필수입니다.");
         Objects.requireNonNull(name, "name은 필수입니다.");
         Objects.requireNonNull(category, "category는 필수입니다.");
-
-        // basePrice 과거 메시지(Null) 호환성 확보 및 음수 검증
-        if (basePrice != null && basePrice.compareTo(BigDecimal.ZERO) < 0) {
+        Objects.requireNonNull(basePrice, "basePrice는 필수입니다.");
+        if (basePrice.compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("기본 가격은 0원 이상이어야 합니다.");
         }
 
