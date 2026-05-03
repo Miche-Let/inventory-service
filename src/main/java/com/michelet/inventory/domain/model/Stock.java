@@ -107,6 +107,9 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
 
     // 복구 로직
     public void restore(int quantity) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("복구 수량은 0보다 커야 합니다.");
+        }
         // 1. 전체 재고 복구: Quantity 객체로 검증. 계산 후, 최종 숫자값만 필드에 대입
         this.totalQuantity = new Quantity(this.totalQuantity).plus(quantity).value();
 
