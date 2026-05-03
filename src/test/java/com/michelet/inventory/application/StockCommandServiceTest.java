@@ -11,12 +11,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.michelet.inventory.application.dto.StockReservedEvent;
+import com.michelet.inventory.application.dto.StockRestoredEvent;
+import com.michelet.inventory.domain.exception.ConcurrencyFailureException;
 import com.michelet.inventory.domain.exception.MaxLimitExceededException;
 import com.michelet.inventory.domain.exception.OutOfStockException;
 import com.michelet.inventory.domain.exception.SoldOutException;
+import com.michelet.inventory.domain.exception.StockNotFoundException;
 import com.michelet.inventory.domain.model.Stock;
 import com.michelet.inventory.domain.repository.StockRepository;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
+import com.michelet.inventory.presentation.dto.RestoreStockRequest;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -31,6 +35,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -53,12 +58,18 @@ class StockCommandServiceTest {
     @Captor
     private ArgumentCaptor<StockReservedEvent> eventCaptor;
 
+    @Captor
+    private ArgumentCaptor<StockRestoredEvent> restoredEventCaptor;
+
     @BeforeEach
     void setUp() {
         given(transactionTemplate.execute(any())).willAnswer(invocation -> {
-            TransactionCallback<StockReservedEvent> action = invocation.getArgument(0);
+            TransactionCallback<?> action = invocation.getArgument(0);
             return action.doInTransaction(null);
         });
+        ReflectionTestUtils.setField(stockCommandService, "maxRetryCount", 3);
+        ReflectionTestUtils.setField(stockCommandService, "topicStockReserved", "stock.reserved");
+        ReflectionTestUtils.setField(stockCommandService, "topicStockRestored", "stock.restored");
     }
 
     @Test
@@ -67,7 +78,7 @@ class StockCommandServiceTest {
         // given
         UUID optionId = UUID.randomUUID();
         Stock stock = Stock.create(optionId, 100, 50, 10);
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null);
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
         given(kafkaTemplate.send(eq("stock.reserved"), eq(optionId.toString()), any(StockReservedEvent.class)))
@@ -92,7 +103,7 @@ class StockCommandServiceTest {
         // given
         UUID optionId = UUID.randomUUID();
         Stock stock = Stock.create(optionId, 100, 1, 10); // 일일 재고 1개
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2); // 2개 요청
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null); // 2개 요청
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
@@ -111,7 +122,7 @@ class StockCommandServiceTest {
         // given
         UUID optionId = UUID.randomUUID();
         Stock stock = Stock.create(optionId, 1, 50, 10); // 전체 재고 1개
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2); // 2개 요청
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null); // 2개 요청
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
@@ -129,7 +140,7 @@ class StockCommandServiceTest {
         // given
         UUID optionId = UUID.randomUUID();
         Stock stock = Stock.create(optionId, 100, 50, 1); // 1인당 1개 제한
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2); // 2개 요청
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null); //2개 요청
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
@@ -146,7 +157,7 @@ class StockCommandServiceTest {
     void reserveStock_Retry_Success() {
         // given
         UUID optionId = UUID.randomUUID();
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null);
 
         // DB에서 최신 데이터를 다시 읽어오는 동작을 시뮬레이션 (매 호출마다 새로운 Stock 객체 반환)
         given(stockRepository.findById(optionId)).willAnswer(invocation ->
@@ -183,7 +194,7 @@ class StockCommandServiceTest {
     void reserveStock_Retry_Fail_MaxAttempts() {
         // given
         UUID optionId = UUID.randomUUID();
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2);
+        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null);
 
         given(stockRepository.findById(optionId)).willAnswer(invocation ->
             Optional.of(Stock.create(optionId, 100, 50, 10))
@@ -193,14 +204,82 @@ class StockCommandServiceTest {
         given(stockRepository.save(any(Stock.class)))
             .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId));
 
-        // when & then: 3번 시도 후 IllegalStateException 발생 검증
+        // when & then: 3번 시도 후 ConcurrencyFailureException
         assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("주문량이 많아 재고 처리에 실패했습니다");
+            .isInstanceOf(ConcurrencyFailureException.class);
 
         verify(stockRepository, times(3)).findById(optionId);
         verify(stockRepository, times(3)).save(any(Stock.class)); // 정확히 3번 시도됨
         verifyNoInteractions(kafkaTemplate); // 실패했으므로 카프카 메시지 발행 안 됨
     }
 
+    @Test
+    @DisplayName("성공: 재고 복구 경로 정상 동작 및 Kafka 발행 테스트 (total/daily 모두 검증)")
+    void restoreStock_Success() {
+        UUID optionId = UUID.randomUUID();
+        // 1. 초기 재고 100개, 일일 재고 50개 생성
+        Stock stock = Stock.create(optionId, 100, 50, 10);
+
+        // 2. 소비된 상태를 시뮬레이션하기 위해 미리 2개를 차감 (total: 98, daily: 48)
+        stock.reserve(2);
+
+        // 3. 다시 2개를 복구해 달라는 요청
+        RestoreStockRequest request = new RestoreStockRequest(optionId, 2, null);
+
+        given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
+        given(kafkaTemplate.send(eq("stock.restored"), eq(optionId.toString()), any(StockRestoredEvent.class)))
+            .willReturn(CompletableFuture.completedFuture(null));
+
+        // when
+        stockCommandService.restoreStockWithRetry(request);
+
+        // then
+        verify(stockRepository, times(1)).save(any(Stock.class));
+        verify(kafkaTemplate, times(1)).send(eq("stock.restored"), eq(optionId.toString()),
+            restoredEventCaptor.capture());
+
+        StockRestoredEvent event = restoredEventCaptor.getValue();
+        assertThat(event.optionId()).isEqualTo(optionId);
+
+        // totalQuantity와 currentDailyStock이 모두 100과 50으로 정상 복구되었는지 검증
+        assertThat(event.totalQuantity()).isEqualTo(100);
+        assertThat(event.currentDailyStock()).isEqualTo(50);
+    }
+
+    @Test
+    @DisplayName("재시도 성공: 복구 시 낙관적 락 충돌이 발생해도 재시도하여 성공한다.")
+    void restoreStock_Retry_Success() {
+        UUID optionId = UUID.randomUUID();
+        RestoreStockRequest request = new RestoreStockRequest(optionId, 2, null);
+
+        given(stockRepository.findById(optionId)).willAnswer(invocation ->
+            Optional.of(Stock.create(optionId, 100, 50, 10))
+        );
+
+        given(stockRepository.save(any(Stock.class)))
+            .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId))
+            .willReturn(null); // 두 번째 시도 성공
+
+        given(kafkaTemplate.send(anyString(), anyString(), any()))
+            .willReturn(CompletableFuture.completedFuture(null));
+
+        stockCommandService.restoreStockWithRetry(request);
+
+        verify(stockRepository, times(2)).findById(optionId);
+        verify(stockRepository, times(2)).save(any(Stock.class));
+    }
+
+    @Test
+    @DisplayName("실패: 재고 복구 시 존재하지 않는 옵션 예외")
+    void restoreStock_Fail_NotFound() {
+        UUID optionId = UUID.randomUUID();
+        RestoreStockRequest request = new RestoreStockRequest(optionId, 5, null);
+
+        given(stockRepository.findById(optionId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> stockCommandService.restoreStockWithRetry(request))
+            .isInstanceOf(StockNotFoundException.class);
+
+        verifyNoInteractions(kafkaTemplate);
+    }
 }

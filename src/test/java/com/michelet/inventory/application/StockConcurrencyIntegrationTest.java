@@ -95,7 +95,7 @@ class StockConcurrencyIntegrationTest {
         // 성공한 횟수를 안전하게 카운트하기 위한 변수
         AtomicInteger successCount = new AtomicInteger();
 
-        ReserveStockRequest request = new ReserveStockRequest(testOptionId, 1);
+        ReserveStockRequest request = new ReserveStockRequest(testOptionId, 1, null);
 
         // when
         for (int i = 0; i < threadCount; i++) {

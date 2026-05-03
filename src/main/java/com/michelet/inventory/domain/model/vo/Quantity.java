@@ -12,4 +12,14 @@ public record Quantity(Integer value) {
             throw new IllegalArgumentException("수량은 0개 이상이어야 합니다.");
         }
     }
+
+    // 새로운 수량을 더한 Quantity 객체를 반환하는 메서드
+    public Quantity plus(int amount) {
+        return new Quantity(this.value + amount);
+    }
+
+    // 값을 Integer로 꺼내주는 편의 메서드
+    public int toInt() {
+        return this.value;
+    }
 }
