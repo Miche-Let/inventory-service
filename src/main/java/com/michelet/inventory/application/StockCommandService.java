@@ -8,6 +8,7 @@ import com.michelet.inventory.domain.model.Stock;
 import com.michelet.inventory.domain.repository.StockRepository;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
 import com.michelet.inventory.presentation.dto.RestoreStockRequest;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +34,15 @@ public class StockCommandService {
 
     @Value("${inventory.kafka.topic.restored:stock.restored}")
     private String topicStockRestored;
+
+    // 재시도 횟수 설정 오류 방어 - 최소 1회 실행 보장
+    @PostConstruct
+    public void validateConfig() {
+        if (this.maxRetryCount <= 0) {
+            log.warn("maxRetryCount [{}] 설정이 0 이하입니다. 1로 강제 조정합니다.", this.maxRetryCount);
+            this.maxRetryCount = Math.max(1, this.maxRetryCount);
+        }
+    }
 
     // @Transactional을 제거 - AOP Self-Invocation 방지
     public void reserveStockWithRetry(ReserveStockRequest request) {
