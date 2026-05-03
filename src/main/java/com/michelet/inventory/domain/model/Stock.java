@@ -104,4 +104,17 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         // createdAt은 DB 저장 후에 채워지므로, 객체 생성 직후엔 version(null)으로 판단하는 것이 더 정확함
         return version == null;
     }
+
+    // 복구 로직
+    public void restore(int quantity) {
+        // 1. 전체 재고 복구: Quantity 객체로 검증. 계산 후, 최종 숫자값만 필드에 대입
+        this.totalQuantity = new Quantity(this.totalQuantity).plus(quantity).value();
+
+        // 2. 일일 재고 복구 (dailyLimit 이내로 제한)
+        int expectedDailyStock = this.currentDailyStock + quantity;
+        int restoredDailyStock = Math.min(expectedDailyStock, this.dailyLimit);
+
+        // 3. 필드 업데이트 (Quantity를 거쳐서 음수 여부 등 최종 검증)
+        this.currentDailyStock = new Quantity(restoredDailyStock).value();
+    }
 }

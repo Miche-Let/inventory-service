@@ -3,6 +3,7 @@ package com.michelet.inventory.presentation;
 import com.michelet.common.response.ApiResponse;
 import com.michelet.inventory.application.StockCommandService;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
+import com.michelet.inventory.presentation.dto.RestoreStockRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -42,6 +43,21 @@ public class InternalStockController {
         }
 
         stockCommandService.reserveStockWithRetry(request);
+
+        return ResponseEntity.ok(ApiResponse.ok(null));
+    }
+
+    //FIXME 임시적용 - common webmvc 수정되면 여기도 수정
+    @PostMapping("/restore")
+    public ResponseEntity<ApiResponse<Void>> restoreStock(
+        @RequestHeader(value = "X-User-Role", required = true) String userRole,
+        @RequestBody @Valid RestoreStockRequest request
+    ) {
+        if (!"SYSTEM".equals(userRole)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "시스템 내부 통신만 접근 가능합니다.");
+        }
+
+        stockCommandService.restoreStockWithRetry(request);
 
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
