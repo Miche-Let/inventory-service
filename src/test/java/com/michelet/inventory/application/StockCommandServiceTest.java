@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.michelet.inventory.application.dto.StockReservedEvent;
+import com.michelet.inventory.domain.exception.ConcurrencyFailureException;
 import com.michelet.inventory.domain.exception.MaxLimitExceededException;
 import com.michelet.inventory.domain.exception.OutOfStockException;
 import com.michelet.inventory.domain.exception.SoldOutException;
@@ -31,6 +32,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -59,6 +61,9 @@ class StockCommandServiceTest {
             TransactionCallback<StockReservedEvent> action = invocation.getArgument(0);
             return action.doInTransaction(null);
         });
+        ReflectionTestUtils.setField(stockCommandService, "maxRetryCount", 3);
+        ReflectionTestUtils.setField(stockCommandService, "topicStockReserved", "stock.reserved");
+        ReflectionTestUtils.setField(stockCommandService, "topicStockRestored", "stock.restored");
     }
 
     @Test
@@ -193,10 +198,9 @@ class StockCommandServiceTest {
         given(stockRepository.save(any(Stock.class)))
             .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId));
 
-        // when & then: 3번 시도 후 IllegalStateException 발생 검증
+        // when & then: 3번 시도 후 ConcurrencyFailureException
         assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("주문량이 많아 재고 처리에 실패했습니다");
+            .isInstanceOf(ConcurrencyFailureException.class);
 
         verify(stockRepository, times(3)).findById(optionId);
         verify(stockRepository, times(3)).save(any(Stock.class)); // 정확히 3번 시도됨

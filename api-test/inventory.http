@@ -43,7 +43,7 @@ Authorization: Bearer {{auth_token}}
 
 {
     "restaurantId": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "44 미슐랭 3스타 시그니처 코스",
+    "name": "미슐랭 3스타 시그니처 코스",
     "category": "MEALKIT",
     "basePrice": 150000,
     "attributes": {
@@ -55,14 +55,14 @@ Authorization: Bearer {{auth_token}}
     },
     "options": [
         {
-            "name": "44 와인 페어링 추가",
+            "name": "와인 페어링 추가",
             "addPrice": 50000,
             "totalQuantity": 100,
             "dailyLimit": 20,
             "maxLimit": 5
         },
         {
-            "name": "44 기본 선택",
+            "name": "기본 선택",
             "addPrice": 0,
             "totalQuantity": 100,
             "dailyLimit": 20,

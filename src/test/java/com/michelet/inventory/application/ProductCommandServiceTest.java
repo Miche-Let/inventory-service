@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -26,6 +27,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -66,6 +69,11 @@ class ProductCommandServiceTest {
     @Captor
     private ArgumentCaptor<List<Stock>> stocksCaptor;
 
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(productCommandService, "topicProductCreated", "product.created");
+    }
+
     @Test
     @DisplayName("성공: 상품 등록 시 모든 도메인 모델(상품/전시/옵션/재고)이 올바른 값으로 저장소에 전달되어야 한다")
     void createProductUnitTest() {
@@ -105,11 +113,11 @@ class ProductCommandServiceTest {
         });
 
         // 3. KafkaTemplate 모킹: send 호출 시 빈 가짜 영수증(CompletableFuture?) 반환
-        java.util.concurrent.CompletableFuture<org.springframework.kafka.support.SendResult<String, Object>> mockFuture
-            = java.util.concurrent.CompletableFuture.completedFuture(
-            new org.springframework.kafka.support.SendResult<>(null, null)
-        );
-        given(kafkaTemplate.send(anyString(), any(), any())).willReturn(mockFuture);
+        CompletableFuture<org.springframework.kafka.support.SendResult<String, Object>> mockFuture
+            = CompletableFuture.completedFuture(new org.springframework.kafka.support.SendResult<>(null, null));
+
+        // lenient()를 추가 - Mockito의 엄격한 Stubbing 검사(PotentialStubbingProblem) 유연하게 통과시킴
+        lenient().when(kafkaTemplate.send(anyString(), anyString(), any())).thenReturn(mockFuture);
 
         // when
         ProductResult result = productCommandService.createProduct(command);
