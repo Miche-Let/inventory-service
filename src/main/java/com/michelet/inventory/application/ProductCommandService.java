@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,6 +34,9 @@ public class ProductCommandService {
     private final StockRepository stockRepository;
 
     private final KafkaTemplate<String, Object> kafkaTemplate;
+
+    @Value("${inventory.kafka.topic.product-created:product.created}")
+    private String topicProductCreated;
 
     @Transactional(readOnly = true)
     public String checkHealth() {
@@ -104,6 +108,7 @@ public class ProductCommandService {
             command.restaurantId(),
             command.name(),
             command.category().name(),
+            product.getBasePrice(),
             command.attributes(),
             command.exhibition().startAt(),
             command.exhibition().endAt(),
@@ -134,7 +139,7 @@ public class ProductCommandService {
     // 카프카 전송 및 콜백 확인용 내부 메서드
     private void sendKafkaMessageWithCallback(ProductCreatedEvent event) {
         log.info("DB 커밋 완료. 상품 등록 이벤트 발행 요청: productId={}", event.productId());
-        kafkaTemplate.send("product.created", event.productId().toString(), event)
+        kafkaTemplate.send(topicProductCreated, event.productId().toString(), event)
             .whenComplete((result, ex) -> {
                 if (ex == null) {
                     log.info("상품 등록 이벤트 발행 실제 성공: productId={}, offset={}",
