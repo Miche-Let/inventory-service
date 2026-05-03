@@ -82,4 +82,9 @@ public class Product extends BaseEntity {
     public Map<String, Object> getAttributes() {
         return Collections.unmodifiableMap(attributes);
     }
+
+    // 전시 상태 변경
+    public void changeStatus(ProductStatus newStatus) {
+        this.status = newStatus;
+    }
 }
