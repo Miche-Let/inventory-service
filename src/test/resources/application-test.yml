@@ -30,6 +30,10 @@ spring:
         properties:
             hibernate:
                 format_sql: true
+    kafka:
+        producer:
+            key-serializer: org.apache.kafka.common.serialization.StringSerializer
+            value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
 jwt:
     secret: ${JWT_SECRET:michelet-secret-key-for-authentication}

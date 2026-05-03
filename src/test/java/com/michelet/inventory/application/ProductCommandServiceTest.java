@@ -3,10 +3,14 @@ package com.michelet.inventory.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.michelet.inventory.application.dto.CreateProductCommand;
+import com.michelet.inventory.application.dto.ProductCreatedEvent;
 import com.michelet.inventory.application.dto.ProductResult;
 import com.michelet.inventory.domain.model.Product;
 import com.michelet.inventory.domain.model.ProductCategory;
@@ -49,6 +53,8 @@ class ProductCommandServiceTest {
     private StockRepository stockRepository;
     @Mock
     private KafkaTemplate<String, Object> kafkaTemplate;
+    @Captor
+    private ArgumentCaptor<ProductCreatedEvent> eventCaptor;
 
     // 리포지토리로 넘어가는 객체를 중간에 가로채기 위한 Captor
     @Captor
@@ -98,6 +104,13 @@ class ProductCommandServiceTest {
             return options;
         });
 
+        // 3. KafkaTemplate 모킹: send 호출 시 빈 가짜 영수증(CompletableFuture?) 반환
+        java.util.concurrent.CompletableFuture<org.springframework.kafka.support.SendResult<String, Object>> mockFuture
+            = java.util.concurrent.CompletableFuture.completedFuture(
+            new org.springframework.kafka.support.SendResult<>(null, null)
+        );
+        given(kafkaTemplate.send(anyString(), any(), any())).willReturn(mockFuture);
+
         // when
         ProductResult result = productCommandService.createProduct(command);
 
@@ -110,9 +123,26 @@ class ProductCommandServiceTest {
         // 1. 반환 결과(ProductResult) 및 상품 검증
         Product savedProduct = productCaptor.getValue();
 
+        // Kafka 발행 시 '파티션 키(Partition Key)'가 ProductId로 정확히 매핑되었는지 검증
+        verify(kafkaTemplate, times(1)).send(
+            eq("product.created"),
+            eq(savedProduct.getId().toString()),
+            eventCaptor.capture()
+        );
+
+        ProductCreatedEvent capturedEvent = eventCaptor.getValue();
+
+        // 캡처된 Kafka 이벤트의 페이로드(내용물)가 정확한지 추가 검증
+        assertThat(capturedEvent.productId()).isEqualTo(savedProduct.getId());
+        assertThat(capturedEvent.restaurantId()).isEqualTo(command.restaurantId());
+        assertThat(capturedEvent.name()).isEqualTo("미슐랭 밀키트 세트");
+        assertThat(capturedEvent.category()).isEqualTo(ProductCategory.MEALKIT.name());
+
         assertThat(result).isNotNull();
-        assertThat(result.productId()).isNotNull(); // 명시적 null 아님 단언 추가
+        assertThat(result.productId()).isNotNull();
         assertThat(result.productId()).isEqualTo(savedProduct.getId());
+        assertThat(result.options()).hasSize(2); // 옵션이 2개 반환되었는지 검증
+        assertThat(result.options().get(0).optionId()).isNotNull(); // 발급된 ID 검증
 
         assertThat(savedProduct.getName()).isEqualTo("미슐랭 밀키트 세트");
         assertThat(savedProduct.getAttributes().get("servings")).isEqualTo(2);

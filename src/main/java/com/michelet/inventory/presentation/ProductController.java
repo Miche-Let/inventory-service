@@ -31,6 +31,6 @@ public class ProductController {
     @RequireRole(UserRole.OWNER)
     public ApiResponse<ProductResponse> createProduct(@Valid @RequestBody CreateProductRequest request) {
         ProductResult result = productCommandService.createProduct(request.toCommand());
-        return ApiResponse.ok(new ProductResponse(result.productId()));
+        return ApiResponse.ok(ProductResponse.from(result));
     }
 }

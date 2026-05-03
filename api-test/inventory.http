@@ -1,0 +1,87 @@
+### 환경 변수 설정
+@host = localhost
+@inventoryPort = 19900
+@gatewayPort = 19000
+
+### 0. [Auth] 오너 계정 회원가입 (최초 1회만 실행)
+POST http://{{host}}:{{gatewayPort}}/api/v1/users/signup
+Content-Type: application/json
+
+{
+    "loginId": "Owner01",
+    "password": "password1!",
+    "name": "owner01",
+    "email": "owner01@test.com",
+    "phone": "010-0000-0001",
+    "userRole": "OWNER"
+}
+
+### 1. [Auth] 로그인 (토큰 획득)
+POST http://{{host}}:{{gatewayPort}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+    "loginId": "Owner01",
+    "password": "password1!"
+}
+
+> {%
+    client.global.set("auth_token", response.body.data.accessToken);
+%}
+
+
+### 2. [Admin] 상품 등록 (ID 자동 저장)
+POST http://{{host}}:{{gatewayPort}}/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+    "restaurantId": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "44 프리미엄 밀키트 세트",
+    "category": "MEALKIT",
+    "basePrice": 25000,
+    "attributes": {
+        "origin": "국내산"
+    },
+    "exhibition": {
+        "startAt": "2024-01-01T00:00:00",
+        "endAt": "2099-12-31T23:59:59"
+    },
+    "options": [
+        {
+            "name": "기본 선택",
+            "addPrice": 0,
+            "totalQuantity": 100,
+            "dailyLimit": 20,
+            "maxLimit": 5
+        }
+    ]
+}
+
+> {%
+    client.global.set("shared_product_id", response.body.data.productId);
+    // 배열이 존재하고 길이가 0보다 클 때만 안전하게 옵션 ID 추출
+    if (response.body.data.options && response.body.data.options.length > 0) {
+        client.global.set("shared_option_id", response.body.data.options[0].optionId);
+    } else {
+        client.log("Warning: 응답에 options 데이터가 없습니다. shared_option_id를 설정하지 않습니다.");
+    }
+%}
+
+
+### 3. [Internal] 재고 선점 (등록된 ID 사용)
+POST http://{{host}}:{{inventoryPort}}/internal/stocks/reserve
+Content-Type: application/json
+X-User-Id: system-id
+X-User-Role: SYSTEM
+
+{
+  "optionId": "{{shared_option_id}}",
+  "quantity": 1
+}
+
+> {%
+    client.test("재고 선점 성공 확인", function () {
+        client.assert(response.status === 200, "재고 선점에 실패했습니다.");
+    });
+%}

@@ -15,6 +15,7 @@ import com.michelet.common.auth.webmvc.config.AuthWebMvcAutoConfiguration;
 import com.michelet.inventory.application.ProductCommandService;
 import com.michelet.inventory.application.dto.ProductResult;
 import com.michelet.inventory.infrastructure.config.SecurityConfig;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -70,7 +71,10 @@ public class ProductControllerTest {
     void createProduct() throws Exception {
         // Given
         UUID productId = UUID.randomUUID();
-        given(productCommandService.createProduct(any())).willReturn(new ProductResult(productId));
+        List<ProductResult.OptionResult> optionResults = List.of(
+            new ProductResult.OptionResult(UUID.randomUUID(), "기본")
+        );
+        given(productCommandService.createProduct(any())).willReturn(new ProductResult(productId, optionResults));
 
         String requestJson = """
             {
@@ -96,6 +100,10 @@ public class ProductControllerTest {
                 .content(requestJson)
                 .contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.options").isArray())
+            .andExpect(jsonPath("$.data.options").isNotEmpty())
+            .andExpect(jsonPath("$.data.options[0].optionId").exists())
+            .andExpect(jsonPath("$.data.options[0].name").value("기본"))
             .andDo(document("{class-name}/{method-name}",
                 // 요청 필드 문서화
                 relaxedRequestFields(
@@ -116,6 +124,9 @@ public class ProductControllerTest {
                 relaxedResponseFields(
                     fieldWithPath("success").type(JsonFieldType.BOOLEAN).description("성공 여부"),
                     fieldWithPath("data.productId").type(JsonFieldType.STRING).description("생성된 상품 ID"),
+                    fieldWithPath("data.options[]").type(JsonFieldType.ARRAY).description("생성된 옵션 리스트"),
+                    fieldWithPath("data.options[].optionId").type(JsonFieldType.STRING).description("옵션 식별 ID"),
+                    fieldWithPath("data.options[].name").type(JsonFieldType.STRING).description("옵션명"),
                     fieldWithPath("timestamp").type(JsonFieldType.STRING).description("응답 시간"),
                     fieldWithPath("message").type(JsonFieldType.STRING).description("결과 메시지").optional(),
                     fieldWithPath("code").type(JsonFieldType.STRING).description("상태 코드").optional(),
