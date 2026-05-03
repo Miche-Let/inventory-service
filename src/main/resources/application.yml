@@ -13,3 +13,12 @@ spring:
 
 server:
     port: 19900
+
+inventory:
+    retry:
+        max-count: 3
+    kafka:
+        topic:
+            product-created: "product.created"
+            reserved: "stock.reserved"
+            restored: "stock.restored"
