@@ -12,11 +12,7 @@ spring:
             host: redis
             port: 6379
     kafka:
-        bootstrap-servers: kafka:9092
-        producer:
-            key-serializer: org.apache.kafka.common.serialization.StringSerializer
-            value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-
+        bootstrap-servers: kafka:9092 # 도커는 컨테이너 이름(kafka)
 eureka:
     client:
         service-url:
