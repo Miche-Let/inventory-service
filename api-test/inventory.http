@@ -256,7 +256,7 @@ X-User-Role: SYSTEM
     });
 %}
 
-### 10. [Test] 카탈로그 최종 동기화 검증 (CQRS Ping-Pong)
+### 10. [Test] 카탈로그 최종 동기화 검증
 # 스케줄러가 일일 재고를 20(한도)이 아닌 5(총재고)로 맞춰서 카프카로 잘 쐈는지 카탈로그를 조회하여 검증
 GET http://{{host}}:{{gatewayPort}}/api/v1/products/{{depletion_product_id}}
 Accept: application/json
