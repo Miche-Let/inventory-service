@@ -24,3 +24,9 @@ inventory:
             restored: "stock.restored"
             status-changed: "product.status-changed"
             daily-reset: "stock.daily-reset"
+
+internal:
+    auth:
+        secret: ${INTERNAL_AUTH_SECRET}
+jwt:
+    secret: ${JWT_SECRET}
