@@ -1,10 +1,16 @@
 package com.michelet.inventory.application;
 
+import com.michelet.inventory.application.dto.ProductStatusChangedEvent;
 import com.michelet.inventory.application.dto.StockReservedEvent;
 import com.michelet.inventory.application.dto.StockRestoredEvent;
 import com.michelet.inventory.domain.exception.ConcurrencyFailureException;
 import com.michelet.inventory.domain.exception.StockNotFoundException;
+import com.michelet.inventory.domain.model.Product;
+import com.michelet.inventory.domain.model.ProductOption;
+import com.michelet.inventory.domain.model.ProductStatus;
 import com.michelet.inventory.domain.model.Stock;
+import com.michelet.inventory.domain.repository.ProductOptionRepository;
+import com.michelet.inventory.domain.repository.ProductRepository;
 import com.michelet.inventory.domain.repository.StockRepository;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
 import com.michelet.inventory.presentation.dto.RestoreStockRequest;
@@ -15,6 +21,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
@@ -23,6 +31,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class StockCommandService {
 
     private final StockRepository stockRepository;
+    private final ProductOptionRepository productOptionRepository;
+    private final ProductRepository productRepository;
+
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final TransactionTemplate transactionTemplate; // 트랜잭션을 수동으로 제어하기 위해 주입
 
@@ -34,6 +45,10 @@ public class StockCommandService {
 
     @Value("${inventory.kafka.topic.restored:stock.restored}")
     private String topicStockRestored;
+
+    @Value("${inventory.kafka.topic.status-changed:product.status-changed}")
+    private String topicStatusChanged;
+
 
     // 재시도 횟수 설정 오류 방어 - 최소 1회 실행 보장
     @PostConstruct
@@ -89,6 +104,32 @@ public class StockCommandService {
 
         // 2. 가독성 위해... 어차피 더티 체킹에 의해 flush 시점에 버전 체크가 발생함
         stockRepository.save(stock);
+
+        // 품절 상태 자동 전이 로직
+        if (stock.getTotalQuantity() == 0) {
+            ProductOption option = productOptionRepository.findById(stock.getOptionId())
+                .orElseThrow(() -> new IllegalArgumentException("옵션 정보를 찾을 수 없습니다."));
+            Product product = option.getProduct();
+
+            // 이미 품절이 아닐 경우에만 변경 및 이벤트 발송
+            if (product.getStatus() != ProductStatus.SOLDOUT) {
+                product.changeStatus(ProductStatus.SOLDOUT);
+                productRepository.save(product);
+
+                ProductStatusChangedEvent statusEvent = new ProductStatusChangedEvent(product.getId(),
+                    product.getStatus().name());
+
+                if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            kafkaTemplate.send(topicStatusChanged, product.getId().toString(), statusEvent);
+                            log.info("재고 0 도달! SOLDOUT 상태 변경 이벤트 발행 예약 완료: productId={}", product.getId());
+                        }
+                    });
+                }
+            }
+        }
 
         // 3. Kafka 이벤트 발행
         return new StockReservedEvent(
