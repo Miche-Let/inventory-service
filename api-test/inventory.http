@@ -278,3 +278,55 @@ Authorization: Bearer {{auth_token}}
         client.log("=======================================");
     });
 %}
+
+### 11. [Update] 상품 정보 수정 (PATCH)
+# shared_product_id를 이용해 상품의 기본 정보(이름, 가격, 카테고리)를 수정
+PATCH http://{{host}}:{{gatewayPort}}/api/v1/products/{{shared_product_id}}
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+    "name": "수정된 미슐랭 코스",
+    "category": "EVENT",
+    "basePrice": 99000,
+    "attributes": {
+        "origin": "수정된 국내산"
+    }
+}
+
+> {%
+    client.test("상품 부분 수정 성공 확인", function () {
+        client.assert(response.status === 200, "수정 API 호출 실패");
+        client.log("상품 정보 수정 완료 (product.updated 이벤트 발행됨)");
+    });
+%}
+
+### 12. [Delete] 상품 삭제 (Soft Delete)
+# shared_product_id를 삭제 처리(DELETED 상태 전이) 함
+DELETE http://{{host}}:{{gatewayPort}}/api/v1/products/{{shared_product_id}}
+Authorization: Bearer {{auth_token}}
+
+> {%
+    client.test("상품 삭제(Soft Delete) 성공 확인", function () {
+        client.assert(response.status === 200, "삭제 API 호출 실패");
+        client.log("상품 삭제 완료 (상태 DELETED 전환 및 이벤트 발행됨)");
+    });
+%}
+
+### 13. [SoldOut] 남은 재고 모두 구매 (총 재고 0 달성 -> SOLDOUT 전이 트리거)
+# depletion_option_id는 Test 7에서 25개 생성 후, Test 8에서 20개 구매하여 5개 남은 상태임. 남은 5개를 모두 차감함
+POST http://{{host}}:{{inventoryPort}}/internal/stocks/reserve
+Content-Type: application/json
+X-User-Role: SYSTEM
+
+{
+  "optionId": "{{depletion_option_id}}",
+  "quantity": 5
+}
+
+> {%
+    client.test("전체 재고 소진 성공 확인", function () {
+        client.assert(response.status === 200, "재고 선점 실패");
+        client.log("모든 재고 소진 완료! (Product 상태 SOLDOUT 자동 전이 및 이벤트 발행됨)");
+    });
+%}

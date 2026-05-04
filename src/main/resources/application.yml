@@ -21,6 +21,7 @@ spring:
                 enable.idempotence: true              # 재시도로 인한 중복 메시지 방지 (exactly-once)
                 max.in.flight.requests.per.connection: 5
                 retry.backoff.ms: 1000
+                max.block.ms: 3000
 
 server:
     port: 19900
@@ -35,6 +36,7 @@ inventory:
             restored: "stock.restored"
             status-changed: "product.status-changed"
             daily-reset: "stock.daily-reset"
+            product-updated: "product.updated"
 
 internal:
     auth:

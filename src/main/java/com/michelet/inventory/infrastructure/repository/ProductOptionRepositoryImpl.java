@@ -3,6 +3,8 @@ package com.michelet.inventory.infrastructure.repository;
 import com.michelet.inventory.domain.model.ProductOption;
 import com.michelet.inventory.domain.repository.ProductOptionRepository;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
@@ -24,5 +26,10 @@ public class ProductOptionRepositoryImpl implements ProductOptionRepository {
     @Override
     public List<ProductOption> findAll() {
         return jpaRepository.findAll();
+    }
+
+    @Override
+    public Optional<ProductOption> findById(UUID id) {
+        return jpaRepository.findById(id);
     }
 }

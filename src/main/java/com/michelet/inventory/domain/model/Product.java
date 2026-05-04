@@ -88,4 +88,19 @@ public class Product extends BaseEntity {
         Objects.requireNonNull(newStatus, "새로운 상태(newStatus)는 null일 수 없습니다.");
         this.status = newStatus;
     }
+    
+    public void update(String name, ProductCategory category, BigDecimal basePrice, Map<String, Object> attributes) {
+        if (name != null && !name.trim().isEmpty()) {
+            this.name = name;
+        }
+        if (category != null) {
+            this.category = category;
+        }
+        if (basePrice != null) {
+            this.basePrice = Price.of(basePrice).value();
+        }
+        if (attributes != null) {
+            this.attributes = new HashMap<>(attributes);
+        }
+    }
 }
