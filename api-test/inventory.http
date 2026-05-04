@@ -26,17 +26,20 @@ Content-Type: application/json
 }
 
 > {%
-    var token = response.body.data.accessToken;
-    client.global.set("auth_token", token);
+    client.test("로그인 성공 확인", function () {
+        client.assert(response.status >= 200 && response.status < 300, "로그인 실패");
+        client.assert(response.body.data !== undefined, "응답 데이터 누락");
 
-    client.log("=======================================");
-    client.log("[로그인 성공]");
-    client.log("저장된 auth_token: " + token);
-    client.log("=======================================");
+        var token = response.body.data.accessToken;
+        client.global.set("auth_token", token);
+        client.log("=======================================");
+        client.log("[로그인 성공] 저장된 auth_token: " + token);
+        client.log("=======================================");
+    });
 %}
 
 
-### 2. [Admin] 상품 등록 (RDB 저장 및 product.created 카프카 발행)
+### 2-1. 상품 등록 (RDB 저장 및 product.created 카프카 발행)
 POST http://{{host}}:{{gatewayPort}}/api/v1/products
 Content-Type: application/json
 Authorization: Bearer {{auth_token}}
@@ -72,34 +75,63 @@ Authorization: Bearer {{auth_token}}
 }
 
 > {%
-    // 1. 응답 성공 여부 확인
-    if (response.status >= 200 && response.status < 300 && response.body && response.body.data) {
+    client.test("상품 등록 성공", function () {
+        client.assert(response.status >= 200 && response.status < 300, "상품 등록 실패");
+        client.assert(response.body && response.body.data, "응답 data 누락");
+
         var data = response.body.data;
+        client.assert(data.productId, "productId 누락");
+        client.global.set("shared_product_id", data.productId);
+        client.log("[성공] 저장된 공유 물품 아이디: " + data.productId);
 
-        // 2. Product ID 저장 및 로그
-        if (data.productId) {
-            client.global.set("shared_product_id", data.productId);
-            client.log("[성공] 저장된 공유 물품 아이디: " + data.productId);
-        } else {
-            client.log("[경고] productId가 응답 데이터에 없습니다.");
-        }
-
-        // 3. Options 안전하게 추출
-        if (data.options && data.options.length > 0) {
+        // optionId가 정의되어 있는지 확실히 검증 후 할당
+        if (data.options && data.options.length > 0 && data.options[0].optionId) {
             var optionId = data.options[0].optionId;
             client.global.set("shared_option_id", optionId);
             client.log("[성공] 저장된 공유 옵션 아이디: " + optionId);
         } else {
-            client.log("[경고] options 데이터가 비어있습니다.");
+            client.assert(false, "response.data.options[0].optionId 누락");
         }
+    });
+%}
 
-    } else {
-        // 에러 발생 시 로그
-        client.log("[에러] API 요청 실패 또는 데이터가 없습니다. (Status: " + response.status + ")");
-        if (response.body && response.body.message) {
-            client.log("상세: " + response.body.message);
+### 2-2. 전시 스케줄러 테스트용 '기간 만료' 상품 등록
+POST http://{{host}}:{{gatewayPort}}/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+    "restaurantId": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "기간 만료 코스 (전시 스케줄러 테스트용)",
+    "category": "MEALKIT",
+    "basePrice": 100000,
+    "attributes": {},
+    "exhibition": {
+        "startAt": "2020-01-01T00:00:00",
+        "endAt": "2023-12-31T23:59:59"
+    },
+    "options": [
+        {
+            "name": "기본",
+            "addPrice": 0,
+            "totalQuantity": 100,
+            "dailyLimit": 20,
+            "maxLimit": 5
         }
-    }
+    ]
+}
+
+> {%
+    client.test("기간 만료 상품 등록 확인", function () {
+        client.assert(response.status >= 200 && response.status < 300, "기간 만료 상품 등록 API 실패");
+        client.assert(response.body && response.body.data, "데이터 본문 누락");
+
+        var data = response.body.data;
+        client.assert(data.productId, "productId 누락");
+
+        client.global.set("expired_product_id", data.productId);
+        client.log("[성공] 저장된 기간 만료 물품 아이디: " + data.productId);
+    });
 %}
 
 
@@ -116,8 +148,8 @@ X-User-Role: SYSTEM
 > {%
     client.test("재고 선점 성공 확인", function () {
         client.assert(response.status === 200, "재고 선점에 실패했습니다.");
+        client.log("재고 선점 테스트 대상 공유 옵션 아이디: " + client.global.get("shared_option_id"));
     });
-    client.log("재고 선점 테스트 대상 공유 옵션 아이디: " + client.global.get("shared_option_id"));
 %}
 
 ### 4. [Internal] 재고 복구 (결제 실패 시 RDB 복구 및 stock.restored 카프카 발행)
@@ -133,6 +165,28 @@ X-User-Role: SYSTEM
 > {%
     client.test("재고 복구 성공 확인", function () {
         client.assert(response.status === 200, "재고 복구에 실패했습니다.");
+        client.log("재고 복구 테스트 대상 공유 옵션 아이디: " + client.global.get("shared_option_id"));
     });
-    client.log("재고 복구 테스트 대상 공유 옵션 아이디: " + client.global.get("shared_option_id"));
+%}
+
+### 5. [Internal] 정시 전시 상태 강제 갱신 트리거
+POST http://{{host}}:{{inventoryPort}}/internal/scheduler/trigger-exhibition
+Content-Type: application/json
+X-User-Role: SYSTEM
+
+> {%
+    client.test("전시 상태 스케줄러 트리거 확인", function () {
+        client.assert(response.status === 200, "전시 상태 스케줄러 호출에 실패했습니다.");
+    });
+%}
+
+### 6. [Internal] 일일 재고 강제 리셋 트리거
+POST http://{{host}}:{{inventoryPort}}/internal/scheduler/trigger-stock
+Content-Type: application/json
+X-User-Role: SYSTEM
+
+> {%
+    client.test("재고 리셋 스케줄러 트리거 확인", function () {
+        client.assert(response.status === 200, "재고 리셋 스케줄러 호출에 실패했습니다.");
+    });
 %}

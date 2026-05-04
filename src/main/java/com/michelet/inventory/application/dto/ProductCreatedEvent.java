@@ -37,7 +37,8 @@ public record ProductCreatedEvent(
         String name,
         BigDecimal addPrice,
         Integer totalQuantity,
-        Integer currentDailyStock
+        Integer currentDailyStock,
+        Integer dailyLimit
     ) {
         public OptionEventDto {
             Objects.requireNonNull(optionId, "optionId는 필수입니다.");
@@ -45,8 +46,9 @@ public record ProductCreatedEvent(
             Objects.requireNonNull(addPrice, "addPrice는 필수입니다.");
             Objects.requireNonNull(totalQuantity, "totalQuantity는 필수입니다.");
             Objects.requireNonNull(currentDailyStock, "currentDailyStock는 필수입니다.");
+            Objects.requireNonNull(dailyLimit, "dailyLimit는 필수입니다.");
 
-            if (totalQuantity < 0 || currentDailyStock < 0) {
+            if (totalQuantity < 0 || currentDailyStock < 0 || dailyLimit < 0) {
                 throw new IllegalArgumentException("재고 수량은 0 이상이어야 합니다.");
             }
         }

@@ -33,9 +33,9 @@ public class StockRepositoryImpl implements StockRepository {
         jpaStockRepository.deleteAll();
     }
 
-    //TODO 일일재고복구
-//    @Override
-//    public int resetDailyStock() {
-//        return jpaStockRepository.resetDailyStock();
-//    }
+    // 일일재고복구
+    @Override
+    public int resetDailyStock() {
+        return jpaStockRepository.resetDailyStock();
+    }
 }

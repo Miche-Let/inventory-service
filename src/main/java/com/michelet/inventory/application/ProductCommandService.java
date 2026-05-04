@@ -11,6 +11,7 @@ import com.michelet.inventory.domain.repository.ProductExhibitionRepository;
 import com.michelet.inventory.domain.repository.ProductOptionRepository;
 import com.michelet.inventory.domain.repository.ProductRepository;
 import com.michelet.inventory.domain.repository.StockRepository;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -83,11 +84,17 @@ public class ProductCommandService {
             CreateProductCommand.OptionCommand reqOption = requestOptions.get(i);
             ProductOption dbOption = savedOptions.get(i);
 
+            // Positional Arguments 실수 방지를 위해 명시적 지역변수 선언
+            BigDecimal addPrice = dbOption.getAddPrice();
+            Integer totalQuantity = reqOption.totalQuantity();
+            Integer dailyLimit = reqOption.dailyLimit();
+            Integer currentDailyStock = reqOption.dailyLimit(); // 초기 생성 시에는 일일 한도와 같음
+
             // DB 저장을 위한 Stock 객체 생성
             stocks.add(Stock.create(
                 dbOption.getId(),
-                reqOption.totalQuantity(),
-                reqOption.dailyLimit(),
+                totalQuantity,
+                dailyLimit,
                 reqOption.maxLimit()
             ));
 
@@ -95,9 +102,10 @@ public class ProductCommandService {
             optionEventDtos.add(new ProductCreatedEvent.OptionEventDto(
                 dbOption.getId(),
                 dbOption.getName(),
-                dbOption.getAddPrice(),
-                reqOption.totalQuantity(),
-                reqOption.dailyLimit() // currentDailyStock은 dailyLimit으로 초기화
+                addPrice,
+                totalQuantity,
+                currentDailyStock,
+                dailyLimit
             ));
         }
         stockRepository.saveAll(stocks);

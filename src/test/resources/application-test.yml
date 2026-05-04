@@ -35,6 +35,9 @@ spring:
             key-serializer: org.apache.kafka.common.serialization.StringSerializer
             value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
+internal:
+    auth:
+        secret: ${INTERNAL_AUTH_SECRET:michelet-internal-auth-secret-key-a8K2mQ9xLp4Vt7Rz1Nc}
 jwt:
     secret: ${JWT_SECRET:michelet-secret-key-for-authentication}
 
@@ -46,4 +49,6 @@ inventory:
             product-created: "product.created"
             reserved: "stock.reserved"
             restored: "stock.restored"
+            status-changed: "product.status-changed"
+            daily-reset: "stock.daily-reset"
 
