@@ -46,8 +46,8 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         this.optionId = optionId;
         this.totalQuantity = totalQuantity;
         this.dailyLimit = dailyLimit;
-        // 생성자 로직: 초기 재고는 일일 한도와 동일하게 설정
-        this.currentDailyStock = dailyLimit;
+        // 초기 재고 설정 시 일일 한도와 총 재고 중 작은 값으로 설정하여 논리적 모순 방지
+        this.currentDailyStock = Math.min(dailyLimit, totalQuantity);
         this.maxLimit = maxLimit != null ? maxLimit : 10;
     }
 
@@ -110,14 +110,16 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         if (quantity <= 0) {
             throw new IllegalArgumentException("복구 수량은 0보다 커야 합니다.");
         }
-        // 1. 전체 재고 복구: Quantity 객체로 검증. 계산 후, 최종 숫자값만 필드에 대입
+        // 1. 전체 재고 복구
         this.totalQuantity = new Quantity(this.totalQuantity).plus(quantity).value();
 
-        // 2. 일일 재고 복구 (dailyLimit 이내로 제한)
+        // 2. 일일 재고 복구 (기존 값 + 복구량)
         int expectedDailyStock = this.currentDailyStock + quantity;
-        int restoredDailyStock = Math.min(expectedDailyStock, this.dailyLimit);
 
-        // 3. 필드 업데이트 (Quantity를 거쳐서 음수 여부 등 최종 검증)
+        // (계산된 일일 재고, 일일 한도, 방금 복구된 총 재고) 중 가장 작은 값을 선택
+        int restoredDailyStock = Math.min(expectedDailyStock, Math.min(this.dailyLimit, this.totalQuantity));
+
+        // 3. 필드 업데이트
         this.currentDailyStock = new Quantity(restoredDailyStock).value();
     }
 }
