@@ -190,3 +190,91 @@ X-User-Role: SYSTEM
         client.assert(response.status === 200, "재고 리셋 스케줄러 호출에 실패했습니다.");
     });
 %}
+
+### 7. [Test] 재고 소진 테스트용 상품 등록 (총 재고 25, 일일 20)
+POST http://{{host}}:{{gatewayPort}}/api/v1/products
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+    "restaurantId": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "품절 임박 리셋 테스트 코스",
+    "category": "MEALKIT",
+    "basePrice": 50000,
+    "attributes": {},
+    "exhibition": {
+        "startAt": "2024-01-01T00:00:00",
+        "endAt": "2099-12-31T23:59:59"
+    },
+    "options": [
+        {
+            "name": "한정판 옵션",
+            "addPrice": 0,
+            "totalQuantity": 25,
+            "dailyLimit": 20,
+            "maxLimit": 20
+        }
+    ]
+}
+
+> {%
+    client.test("테스트용 상품 등록 성공", function () {
+        client.assert(response.status === 200, "상품 등록 실패");
+        var data = response.body.data;
+        client.global.set("depletion_product_id", data.productId);
+        client.global.set("depletion_option_id", data.options[0].optionId);
+        client.log("[초기 상태] 총 재고: 25, 일일 한도: 20");
+    });
+%}
+
+### 8. [Test] 20개 대량 구매 (총 재고 5개 남음)
+POST http://{{host}}:{{inventoryPort}}/internal/stocks/reserve
+Content-Type: application/json
+X-User-Role: SYSTEM
+
+{
+  "optionId": "{{depletion_option_id}}",
+  "quantity": 20
+}
+
+> {%
+    client.test("대량 재고 선점 성공", function () {
+        client.assert(response.status === 200, "재고 선점 실패");
+        client.log("[판매 완료] 20개 구매됨 -> 이론상 총 재고 5, 일일 재고 0 이어야 함");
+    });
+%}
+
+### 9. [Test] 자정이 되었다고 가정하고 스케줄러 트리거 실행
+POST http://{{host}}:{{inventoryPort}}/internal/scheduler/trigger-stock
+Content-Type: application/json
+X-User-Role: SYSTEM
+
+> {%
+    client.test("자정 리셋 스케줄러 실행", function () {
+        client.assert(response.status === 200, "스케줄러 호출 실패");
+        client.log("자정 스케줄러 가동! (LEAST 쿼리 작동)");
+    });
+%}
+
+### 10. [Test] 카탈로그 최종 동기화 검증 (CQRS Ping-Pong)
+# 스케줄러가 일일 재고를 20(한도)이 아닌 5(총재고)로 맞춰서 카프카로 잘 쐈는지 카탈로그를 조회하여 검증
+GET http://{{host}}:{{gatewayPort}}/api/v1/products/{{depletion_product_id}}
+Accept: application/json
+Authorization: Bearer {{auth_token}}
+
+> {%
+    client.test("한계 재고 리셋 로직(Math.min) 카탈로그 동기화 완벽 검증", function () {
+        client.assert(response.status === 200, "카탈로그 조회 실패");
+        client.assert(response.body && response.body.data, "응답 데이터 누락");
+
+        var option = response.body.data.options[0];
+
+        client.assert(option.totalQuantity === 5, "예상 총 재고: 5, 실제: " + option.totalQuantity);
+        client.assert(option.currentDailyStock === 5, "예상 일일 재고(Math.min 적용): 5, 실제: " + option.currentDailyStock);
+
+        client.log("=======================================");
+        client.log("성공! 총 재고(5)가 일일 한도(20)를 초과하여 충전되지 않았습니다.");
+        client.log("최종 상태 - 총 재고: " + option.totalQuantity + " / 오늘 팔 수 있는 수량: " + option.currentDailyStock);
+        client.log("=======================================");
+    });
+%}
