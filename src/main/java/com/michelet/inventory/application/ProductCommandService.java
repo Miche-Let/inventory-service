@@ -88,7 +88,7 @@ public class ProductCommandService {
             BigDecimal addPrice = dbOption.getAddPrice();
             Integer totalQuantity = reqOption.totalQuantity();
             Integer dailyLimit = reqOption.dailyLimit();
-            Integer currentDailyStock = reqOption.dailyLimit(); // 초기 생성 시에는 일일 한도와 같음
+            Integer currentDailyStock = Math.min(dailyLimit, totalQuantity);
 
             // DB 저장을 위한 Stock 객체 생성
             stocks.add(Stock.create(

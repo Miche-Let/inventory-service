@@ -46,8 +46,8 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         this.optionId = optionId;
         this.totalQuantity = totalQuantity;
         this.dailyLimit = dailyLimit;
-        // 생성자 로직: 초기 재고는 일일 한도와 동일하게 설정
-        this.currentDailyStock = dailyLimit;
+        // 초기 재고 설정 시 일일 한도와 총 재고 중 작은 값으로 설정하여 논리적 모순 방지
+        this.currentDailyStock = Math.min(dailyLimit, totalQuantity);
         this.maxLimit = maxLimit != null ? maxLimit : 10;
     }
 
