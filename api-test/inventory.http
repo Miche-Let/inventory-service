@@ -172,6 +172,7 @@ X-User-Role: SYSTEM
 ### 5. [Internal] 정시 전시 상태 강제 갱신 트리거
 POST http://{{host}}:{{inventoryPort}}/internal/scheduler/trigger-exhibition
 Content-Type: application/json
+X-User-Role: SYSTEM
 
 > {%
     client.test("전시 상태 스케줄러 트리거 확인", function () {
@@ -182,6 +183,7 @@ Content-Type: application/json
 ### 6. [Internal] 일일 재고 강제 리셋 트리거
 POST http://{{host}}:{{inventoryPort}}/internal/scheduler/trigger-stock
 Content-Type: application/json
+X-User-Role: SYSTEM
 
 > {%
     client.test("재고 리셋 스케줄러 트리거 확인", function () {
