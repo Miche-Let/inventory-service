@@ -112,7 +112,7 @@ public class StockCommandService {
             Product product = option.getProduct();
 
             // 이미 품절이 아닐 경우에만 변경 및 이벤트 발송
-            if (product.getStatus() != ProductStatus.SOLDOUT) {
+            if (product.getStatus() != ProductStatus.SOLDOUT && product.getStatus() != ProductStatus.DELETED) {
                 product.changeStatus(ProductStatus.SOLDOUT);
                 productRepository.save(product);
 
