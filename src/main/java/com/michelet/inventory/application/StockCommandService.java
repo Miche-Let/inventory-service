@@ -123,8 +123,19 @@ public class StockCommandService {
                     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                         @Override
                         public void afterCommit() {
-                            kafkaTemplate.send(topicStatusChanged, product.getId().toString(), statusEvent);
-                            log.info("재고 0 도달! SOLDOUT 상태 변경 이벤트 발행 예약 완료: productId={}", product.getId());
+                            // 카프카 전송 실패 시 에러 핸들링 로깅 추가
+                            kafkaTemplate.send(topicStatusChanged, product.getId().toString(), statusEvent)
+                                .whenComplete((result, ex) -> {
+                                    if (ex != null) {
+                                        log.error("SOLDOUT 상태 변경 Kafka 메시지 발행 실패 (데이터 불일치 위험)! productId: {}",
+                                            product.getId(), ex);
+                                    } else {
+                                        long offset = (result != null && result.getRecordMetadata() != null)
+                                            ? result.getRecordMetadata().offset() : -1;
+                                        log.info("SOLDOUT 상태 변경 Kafka 메시지 발행 성공! productId={}, offset={}",
+                                            product.getId(), offset);
+                                    }
+                                });
                         }
                     });
                 }
