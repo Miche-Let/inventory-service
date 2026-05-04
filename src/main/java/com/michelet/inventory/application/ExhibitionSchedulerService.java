@@ -8,12 +8,15 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -26,13 +29,18 @@ public class ExhibitionSchedulerService {
     private final ProductRepository productRepository;
     private final KafkaTemplate<String, Object> kafkaTemplate;
 
+    // Spring AOP의 프록시를 타기 위한 자기 자신 주입
+    @Lazy
+    @Autowired
+    private ExhibitionSchedulerService self;
+
     private static final int CHUNK_SIZE = 100;
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
 
     @Value("${inventory.kafka.topic.status-changed:product.status-changed}")
     private String topicStatusChanged;
 
-    @Transactional
+    // 외부 진입점의 @Transactional을 제거하여 영속성 컨텍스트 비대화를 막음
     @Scheduled(cron = "0 0 * * * *", zone = "Asia/Seoul") // 매 정시(0분 0초)마다 실행
     public void updateExhibitionStatus() {
         log.info("정시 전시 상태 변경 스케줄러 시작...");
@@ -45,27 +53,47 @@ public class ExhibitionSchedulerService {
     }
 
     private void processOpeningProducts(LocalDateTime now) {
-        Slice<Product> slice;
-        do {
-            // 변경된 데이터는 다음 조회(status='HIDDEN')에서 제외되므로 페이지넘버를 0으로 고정함
-            slice = productRepository.findProductsToOpen(now, PageRequest.of(0, CHUNK_SIZE));
-            for (Product product : slice.getContent()) {
-                product.changeStatus(ProductStatus.ACTIVE);
-                publishStatusChangeEventAfterCommit(product); // 트랜잭션 커밋 후 발행
+        while (true) {
+            // 프록시 객체를 통해 호출하여 매 루프(Chunk)마다 독립된 트랜잭션을 연다
+            int processed = self.processOpeningChunk(now);
+            if (processed == 0) {
+                break;
             }
-        } while (slice.hasNext());
+        }
     }
 
     private void processClosingProducts(LocalDateTime now) {
-        Slice<Product> slice;
-        do {
-            // 변경된 데이터는 다음 조회(status='ACTIVE')에서 제외되므로 페이지넘버를 0으로 고정함
-            slice = productRepository.findProductsToClose(now, PageRequest.of(0, CHUNK_SIZE));
-            for (Product product : slice.getContent()) {
-                product.changeStatus(ProductStatus.HIDDEN);
-                publishStatusChangeEventAfterCommit(product); // 트랜잭션 커밋 후 발행
+        while (true) {
+            int processed = self.processClosingChunk(now);
+            if (processed == 0) {
+                break;
             }
-        } while (slice.hasNext());
+        }
+    }
+
+    // REQUIRES_NEW: 청크가 끝날 때마다 DB 트랜잭션을 커밋하고 L1 캐시를 비워 OOM을 방지함
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public int processOpeningChunk(LocalDateTime now) {
+        Slice<Product> slice = productRepository.findProductsToOpen(now, PageRequest.of(0, CHUNK_SIZE));
+
+        for (Product product : slice.getContent()) {
+            product.changeStatus(ProductStatus.ACTIVE);
+            publishStatusChangeEventAfterCommit(product);
+        }
+
+        return slice.getNumberOfElements();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public int processClosingChunk(LocalDateTime now) {
+        Slice<Product> slice = productRepository.findProductsToClose(now, PageRequest.of(0, CHUNK_SIZE));
+
+        for (Product product : slice.getContent()) {
+            product.changeStatus(ProductStatus.HIDDEN);
+            publishStatusChangeEventAfterCommit(product);
+        }
+
+        return slice.getNumberOfElements();
     }
 
     // DB 커밋 성공 시에만 카프카로 이벤트 발행 보장
