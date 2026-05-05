@@ -1,7 +1,21 @@
 ### 환경 변수 설정
 @host = localhost
-@inventoryPort = 19900
 @gatewayPort = 19000
+@inventoryPort = 19900
+@orderPort = 19700
+
+### -1. [Test] 내부 API용 테스트 JWT 토큰 발급 (로컬 전용)
+GET http://{{host}}:{{orderPort}}/test/internal-token
+
+> {%
+    client.test("내부 토큰 획득 성공", function () {
+        client.assert(response.status === 200, "내부 토큰 발급 실패");
+        client.global.set("internal_token", response.body);
+        client.log("=======================================");
+        client.log("[토큰 획득] X-Internal-Token 저장 완료");
+        client.log("=======================================");
+    });
+%}
 
 ### 0. [Auth] 오너 계정 회원가입 (최초 1회만 실행)
 POST http://{{host}}:{{gatewayPort}}/api/v1/users/signup
@@ -16,7 +30,7 @@ Content-Type: application/json
     "userRole": "OWNER"
 }
 
-### 1. [Auth] 로그인 (토큰 획득)
+### 1. [Auth] 로그인 (오너 토큰 획득)
 POST http://{{host}}:{{gatewayPort}}/api/v1/auth/login
 Content-Type: application/json
 
@@ -31,9 +45,9 @@ Content-Type: application/json
         client.assert(response.body.data !== undefined, "응답 데이터 누락");
 
         var token = response.body.data.accessToken;
-        client.global.set("auth_token", token);
+        client.global.set("owner_token", token);
         client.log("=======================================");
-        client.log("[로그인 성공] 저장된 auth_token: " + token);
+        client.log("[로그인 성공] 저장된 오너 auth_token: " + token);
         client.log("=======================================");
     });
 %}
@@ -42,7 +56,7 @@ Content-Type: application/json
 ### 2-1. 상품 등록 (RDB 저장 및 product.created 카프카 발행)
 POST http://{{host}}:{{gatewayPort}}/api/v1/products
 Content-Type: application/json
-Authorization: Bearer {{auth_token}}
+Authorization: Bearer {{owner_token}}
 
 {
     "restaurantId": "550e8400-e29b-41d4-a716-446655440000",
@@ -138,7 +152,7 @@ Authorization: Bearer {{auth_token}}
 ### 3. [Internal] 재고 차감/선점 (RDB 차감 및 stock.reserved 카프카 발행)
 POST http://{{host}}:{{inventoryPort}}/internal/stocks/reserve
 Content-Type: application/json
-X-User-Role: SYSTEM
+X-Internal-Token: {{internal_token}}
 
 {
   "optionId": "{{shared_option_id}}",
@@ -155,7 +169,7 @@ X-User-Role: SYSTEM
 ### 4. [Internal] 재고 복구 (결제 실패 시 RDB 복구 및 stock.restored 카프카 발행)
 POST http://{{host}}:{{inventoryPort}}/internal/stocks/restore
 Content-Type: application/json
-X-User-Role: SYSTEM
+X-Internal-Token: {{internal_token}}
 
 {
   "optionId": "{{shared_option_id}}",
@@ -172,7 +186,7 @@ X-User-Role: SYSTEM
 ### 5. [Internal] 정시 전시 상태 강제 갱신 트리거
 POST http://{{host}}:{{inventoryPort}}/internal/scheduler/trigger-exhibition
 Content-Type: application/json
-X-User-Role: SYSTEM
+X-Internal-Token: {{internal_token}}
 
 > {%
     client.test("전시 상태 스케줄러 트리거 확인", function () {
@@ -183,7 +197,7 @@ X-User-Role: SYSTEM
 ### 6. [Internal] 일일 재고 강제 리셋 트리거
 POST http://{{host}}:{{inventoryPort}}/internal/scheduler/trigger-stock
 Content-Type: application/json
-X-User-Role: SYSTEM
+X-Internal-Token: {{internal_token}}
 
 > {%
     client.test("재고 리셋 스케줄러 트리거 확인", function () {
@@ -230,7 +244,7 @@ Authorization: Bearer {{auth_token}}
 ### 8. [Test] 20개 대량 구매 (총 재고 5개 남음)
 POST http://{{host}}:{{inventoryPort}}/internal/stocks/reserve
 Content-Type: application/json
-X-User-Role: SYSTEM
+X-Internal-Token: {{internal_token}}
 
 {
   "optionId": "{{depletion_option_id}}",
@@ -247,7 +261,7 @@ X-User-Role: SYSTEM
 ### 9. [Test] 자정이 되었다고 가정하고 스케줄러 트리거 실행
 POST http://{{host}}:{{inventoryPort}}/internal/scheduler/trigger-stock
 Content-Type: application/json
-X-User-Role: SYSTEM
+X-Internal-Token: {{internal_token}}
 
 > {%
     client.test("자정 리셋 스케줄러 실행", function () {
@@ -283,7 +297,7 @@ Authorization: Bearer {{auth_token}}
 # shared_product_id를 이용해 상품의 기본 정보(이름, 가격, 카테고리)를 수정
 PATCH http://{{host}}:{{gatewayPort}}/api/v1/products/{{shared_product_id}}
 Content-Type: application/json
-Authorization: Bearer {{auth_token}}
+Authorization: Bearer {{owner_token}}
 
 {
     "name": "수정된 미슐랭 코스",
@@ -304,7 +318,7 @@ Authorization: Bearer {{auth_token}}
 ### 12. [Delete] 상품 삭제 (Soft Delete)
 # shared_product_id를 삭제 처리(DELETED 상태 전이) 함
 DELETE http://{{host}}:{{gatewayPort}}/api/v1/products/{{shared_product_id}}
-Authorization: Bearer {{auth_token}}
+Authorization: Bearer {{owner_token}}
 
 > {%
     client.test("상품 삭제(Soft Delete) 성공 확인", function () {
@@ -317,7 +331,7 @@ Authorization: Bearer {{auth_token}}
 # depletion_option_id는 Test 7에서 25개 생성 후, Test 8에서 20개 구매하여 5개 남은 상태임. 남은 5개를 모두 차감함
 POST http://{{host}}:{{inventoryPort}}/internal/stocks/reserve
 Content-Type: application/json
-X-User-Role: SYSTEM
+X-Internal-Token: {{internal_token}}
 
 {
   "optionId": "{{depletion_option_id}}",
