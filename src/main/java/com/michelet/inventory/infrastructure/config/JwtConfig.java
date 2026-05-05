@@ -7,14 +7,19 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class JwtConfig {
 
-    // JWT_SECRET이 없으면 앱 구동을 막기 위한 검증
-    @Value("${jwt.secret}")
+    @Value("${jwt.secret:}")
     private String jwtSecret;
+
+    @Value("${internal.auth.secret:}")
+    private String internalSecret;
 
     @PostConstruct
     public void validateSecret() {
-        if (jwtSecret == null || jwtSecret.trim().isEmpty()) {
-            throw new IllegalStateException("JWT_SECRET 환경 변수가 설정되지 않았습니다. 보안을 위해 애플리케이션을 시작할 수 없습니다.");
+        if (jwtSecret.isEmpty()) {
+            throw new IllegalStateException("JWT_SECRET이 설정되지 않았습니다.");
+        }
+        if (internalSecret.isEmpty()) {
+            throw new IllegalStateException("INTERNAL_AUTH_SECRET이 설정되지 않았습니다.");
         }
     }
 }
