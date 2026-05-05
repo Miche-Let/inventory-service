@@ -47,7 +47,7 @@ Content-Type: application/json
         var token = response.body.data.accessToken;
         client.global.set("owner_token", token);
         client.log("=======================================");
-        client.log("[로그인 성공] 저장된 오너 auth_token: " + token);
+        client.log("[로그인 성공] 저장된 owner_token: " + token);
         client.log("=======================================");
     });
 %}
