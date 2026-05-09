@@ -83,13 +83,29 @@ public class Product extends BaseEntity {
         return Collections.unmodifiableMap(attributes);
     }
 
-    // 전시 상태 변경
+    // 도메인 규칙: 삭제되거나 만료된 상품은 수정할 수 없음을 검증
+    private void verifyModifiableState() {
+        if (this.status == ProductStatus.DELETED || this.status == ProductStatus.EXPIRED) {
+            throw new IllegalStateException("만료되거나 삭제된 상품은 수정할 수 없습니다.");
+        }
+    }
+
+    // 전시 상태 변경 로직 강화 (상태 전이 룰 적용)
     public void changeStatus(ProductStatus newStatus) {
         Objects.requireNonNull(newStatus, "새로운 상태(newStatus)는 null일 수 없습니다.");
+
+        // ProductStatus Enum에 구현된 canTransitionTo 메서드를 호출하여 전이 규칙 검증
+        if (!this.status.canTransitionTo(newStatus)) {
+            throw new IllegalStateException("상품 상태를 " + this.status + "에서 " + newStatus + "로 변경할 수 없습니다.");
+        }
+
         this.status = newStatus;
     }
-    
+
+    // 상품 정보 수정 시 방어 로직 적용
     public void update(String name, ProductCategory category, BigDecimal basePrice, Map<String, Object> attributes) {
+        verifyModifiableState(); // 가장 먼저 수정 가능 상태인지 검증
+
         if (name != null && !name.trim().isEmpty()) {
             this.name = name;
         }

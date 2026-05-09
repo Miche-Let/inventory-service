@@ -386,6 +386,26 @@ Authorization: Bearer {{inv_owner_token}}
     });
 %}
 
+### 11-1. [Test] 방어 로직 검증: 만료된 상품(EXPIRED) 수정 시도 -> 에러(실패)가 나야 정상
+PATCH http://{{host}}:{{gatewayPort}}/api/v1/products/{{inv_expired_product_id}}
+Content-Type: application/json
+Authorization: Bearer {{inv_owner_token}}
+
+{
+    "name": "만료된 코스 이름 몰래 바꾸기",
+    "basePrice": 999999
+}
+
+> {%
+    client.test("만료/삭제 상품 수정 방어 로직(DDD) 작동 확인", function () {
+        // 도메인에서 IllegalStateException을 던지기 때문에 200 OK가 나오면 안 됨 (보통 400/500 에러 발생)
+        client.assert(response.status !== 200, "방어 실패: 만료된 상품이 수정되어버림");
+        client.log("=======================================");
+        client.log("성공! 만료된 상품 수정 시도에 대해 도메인이 방어함");
+        client.log("=======================================");
+    });
+%}
+
 ### 12. [Delete] 상품 삭제 (Soft Delete)
 DELETE http://{{host}}:{{gatewayPort}}/api/v1/products/{{inv_shared_product_id}}
 Authorization: Bearer {{inv_owner_token}}
