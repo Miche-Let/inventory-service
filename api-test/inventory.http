@@ -217,6 +217,29 @@ X-Internal-Token: {{inv_internal_token}}
     });
 %}
 
+### 5-1. [Test] 전시 만료 상품 상태 전이 검증 (EXPIRED 확인)
+# 5번 스케줄러 트리거에 의해 2-2번에서 등록한 상품이 EXPIRED 상태가 되었는지 확인
+GET http://{{host}}:{{gatewayPort}}/api/v1/products/{{inv_expired_product_id}}
+Accept: application/json
+Authorization: Bearer {{inv_owner_token}}
+
+> {%
+    client.test("전시 기간 만료 로직(EXPIRED) 카탈로그 동기화 검증", function () {
+        client.assert(response.status === 200, "조회 API 호출 실패");
+        client.assert(response.body && response.body.data, "응답 데이터 누락");
+
+        var status = response.body.data.status;
+        client.log("=======================================");
+        client.log("만료 테스트 상품 ID: " + client.global.get("inv_expired_product_id"));
+        client.log("현재 상태: " + status);
+
+        client.assert(status === "EXPIRED", "상태가 EXPIRED여야 합니다. 실제 상태: " + status);
+
+        client.log("성공! 전시 기간이 지난 상품이 스케줄러에 의해 EXPIRED로 전환됨");
+        client.log("=======================================");
+    });
+%}
+
 ### [Internal Token] 내부 통신용 토큰 갱신
 GET http://{{host}}:{{orderPort}}/test/internal-token?audience=inventory-service
 
