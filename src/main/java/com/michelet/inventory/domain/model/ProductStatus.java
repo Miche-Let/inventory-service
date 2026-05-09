@@ -18,6 +18,9 @@ public enum ProductStatus {
      * 상품 상태 전이 가능 여부를 검증
      */
     public boolean canTransitionTo(ProductStatus nextStatus) {
+        if (nextStatus == null) {
+            return false;
+        }
         if (this == DELETED) {
             return false; // 삭제 상태에서는 어떤 상태로도 전이 불가 (동일 상태 포함)
         }
