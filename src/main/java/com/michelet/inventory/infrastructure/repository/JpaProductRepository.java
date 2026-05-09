@@ -17,9 +17,9 @@ public interface JpaProductRepository extends JpaRepository<Product, UUID> {
         "ORDER BY p.id ASC")
     Slice<Product> findProductsToOpen(@Param("now") LocalDateTime now, Pageable pageable);
 
-    // 전시 종료 시간이 지났는데 아직 판매 중(ACTIVE)인 상품 조회
+    // 전시 종료 시간이 지났는데 아직 판매 중(ACTIVE)이거나 품절(SOLDOUT)인 상품 조회
     @Query("SELECT p FROM Product p JOIN ProductExhibition e ON p.id = e.productId " +
-        "WHERE p.status = 'ACTIVE' AND e.endAt <= :now " +
+        "WHERE p.status IN ('ACTIVE', 'SOLDOUT') AND e.endAt <= :now " +
         "ORDER BY p.id ASC")
     Slice<Product> findProductsToClose(@Param("now") LocalDateTime now, Pageable pageable);
 }

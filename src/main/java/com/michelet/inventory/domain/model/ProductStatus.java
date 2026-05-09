@@ -18,11 +18,11 @@ public enum ProductStatus {
      * 상품 상태 전이 가능 여부를 검증
      */
     public boolean canTransitionTo(ProductStatus nextStatus) {
-        if (this == nextStatus) {
-            return true; // 동일 상태로의 변경은 허용 (멱등성 보장)
-        }
         if (this == DELETED) {
-            return false; // DELETED(삭제)는 완전한 종료 상태이므로 어떤 상태로도 돌아갈 수 없음
+            return false; // 삭제 상태에서는 어떤 상태로도 전이 불가 (동일 상태 포함)
+        }
+        if (this == nextStatus) {
+            return true; // 이하 상태에서의 멱등성(동일 상태 재요청) 허용
         }
         if (this == EXPIRED) {
             // EXPIRED(만료) 상태에서는 오직 삭제(DELETED) 처리만 가능
