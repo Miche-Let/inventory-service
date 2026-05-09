@@ -43,3 +43,11 @@ internal:
         secret: ${INTERNAL_AUTH_SECRET}
 jwt:
     secret: ${JWT_SECRET}
+
+logging:
+    level:
+        root: INFO
+        # 카프카 및 유레카 관련 잡다한 INFO 로그 억제 (경고 이상만 출력)
+        org.apache.kafka: WARN
+        com.netflix.discovery: WARN
+        org.springframework.kafka: WARN
