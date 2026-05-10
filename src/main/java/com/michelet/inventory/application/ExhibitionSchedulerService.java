@@ -89,7 +89,7 @@ public class ExhibitionSchedulerService {
         Slice<Product> slice = productRepository.findProductsToClose(now, PageRequest.of(0, CHUNK_SIZE));
 
         for (Product product : slice.getContent()) {
-            product.changeStatus(ProductStatus.HIDDEN);
+            product.changeStatus(ProductStatus.EXPIRED);
             publishStatusChangeEventAfterCommit(product);
         }
 

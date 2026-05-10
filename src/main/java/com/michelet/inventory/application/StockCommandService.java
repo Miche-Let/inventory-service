@@ -111,8 +111,11 @@ public class StockCommandService {
                 .orElseThrow(() -> new IllegalArgumentException("옵션 정보를 찾을 수 없습니다."));
             Product product = option.getProduct();
 
-            // 이미 품절이 아닐 경우에만 변경 및 이벤트 발송
-            if (product.getStatus() != ProductStatus.SOLDOUT && product.getStatus() != ProductStatus.DELETED) {
+            // 이미 품절(SOLDOUT)이거나, 삭제(DELETED)되었거나, 만료(EXPIRED)된 상품은 상태를 변경하지 않음
+            if (product.getStatus() != ProductStatus.SOLDOUT
+                && product.getStatus() != ProductStatus.DELETED
+                && product.getStatus() != ProductStatus.EXPIRED) {
+
                 product.changeStatus(ProductStatus.SOLDOUT);
                 productRepository.save(product);
 
