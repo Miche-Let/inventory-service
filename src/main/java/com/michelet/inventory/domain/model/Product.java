@@ -78,7 +78,13 @@ public class Product extends BaseEntity {
 
     public static Product create(UUID restaurantId, String name, ProductCategory category, BigDecimal basePrice,
                                  Map<String, Object> attributes) {
-        return new Product(restaurantId, name, category, basePrice, attributes);
+        return Product.builder()
+            .restaurantId(restaurantId)
+            .name(name)
+            .category(category)
+            .basePrice(basePrice)
+            .attributes(attributes)
+            .build();
     }
 
     public Map<String, Object> getAttributes() {
