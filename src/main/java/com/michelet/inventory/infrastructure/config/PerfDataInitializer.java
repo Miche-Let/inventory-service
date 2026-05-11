@@ -25,16 +25,20 @@ public class PerfDataInitializer implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (stockRepository.findById(TEST_OPTION_ID).isEmpty()) {
-            log.info("[PerfDataInitializer]-inventory : 1차 부하테스트용 무한 재고(100만)를 세팅함");
-            Stock stock = Stock.create(
-                TEST_OPTION_ID,
-                1000000, // totalQuantity
-                1000000, // dailyLimit
-                100      // maxLimit
-            );
-            stockRepository.save(stock);
-            log.info("[PerfDataInitializer] 재고 세팅 완료. OptionId: {}", TEST_OPTION_ID);
+        try {
+            if (stockRepository.findById(TEST_OPTION_ID).isEmpty()) {
+                log.info("[PerfDataInitializer]-inventory : 1차 부하테스트용 무한 재고(100만)를 세팅함");
+                Stock stock = Stock.create(
+                    TEST_OPTION_ID,
+                    1000000, // totalQuantity
+                    1000000, // dailyLimit
+                    100      // maxLimit
+                );
+                stockRepository.save(stock);
+                log.info("[PerfDataInitializer] 재고 세팅 완료. OptionId: {}", TEST_OPTION_ID);
+            }
+        } catch (Exception ex) {
+            log.error("[PerfDataInitializer] 특정 옵션 재고 초기화 실패. 대상 옵션아이디 : {}.", TEST_OPTION_ID, ex);
         }
     }
 }
