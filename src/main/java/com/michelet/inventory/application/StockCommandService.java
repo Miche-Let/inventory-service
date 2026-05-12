@@ -82,7 +82,7 @@ public class StockCommandService {
             stock.getTotalQuantity(),
             stock.getCurrentDailyStock()
         );
-        publishKafkaEvent(topicStockReserved, request.optionId().toString(), event, "예약");
+        publishKafkaEvent(topicStockReserved, request.optionId().toString(), event, "재고차감");
     }
 
     @Transactional
@@ -102,7 +102,7 @@ public class StockCommandService {
             stock.getTotalQuantity(),
             stock.getCurrentDailyStock()
         );
-        publishKafkaEvent(topicStockRestored, request.optionId().toString(), event, "복구");
+        publishKafkaEvent(topicStockRestored, request.optionId().toString(), event, "재고복구");
     }
 
     // DB 커밋 완료 후에만 Kafka가 발행되도록 보장하는 공통 메서드

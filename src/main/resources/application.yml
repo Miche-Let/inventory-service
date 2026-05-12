@@ -22,6 +22,20 @@ spring:
                 max.in.flight.requests.per.connection: 5
                 retry.backoff.ms: 1000
                 max.block.ms: 3000
+        consumer:
+            group-id: inventory-service-consumer
+            auto-offset-reset: earliest
+            key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+            # 에러 시 무한 루프 방지를 위한 ErrorHandlingDeserializer 래퍼 적용
+            value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+            properties:
+                # 실제 역직렬화를 수행할 델리게이트 클래스 지정
+                spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+                spring.json.trusted.packages: "com.michelet.inventory.infrastructure.messaging.dto"
+                spring.json.use.type.headers: true
+                # 서로 다른 패키지의 이벤트를 1:1로 매핑
+                spring.json.type.mapping: "com.michelet.order.application.dto.StockRestoreEventPayload:com.michelet.inventory.infrastructure.messaging.dto.StockRestoreMessage"
+
 
 server:
     port: 19900
