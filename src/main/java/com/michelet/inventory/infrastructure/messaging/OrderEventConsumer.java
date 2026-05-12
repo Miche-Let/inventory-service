@@ -20,6 +20,12 @@ public class OrderEventConsumer {
         groupId = "${spring.kafka.consumer.group-id:inventory-service-consumer}"
     )
     public void consumeStockRestoredEvent(StockRestoreMessage payload) {
+        if (payload == null) {
+            log.error("[Kafka Consumer] 잘못된 복구 이벤트 수신: payload가 null입니다 (Tombstone 메시지일 가능성).");
+            // IllegalArgumentException을 던지면 아래 catch 블록에서 잡지 않고 밖으로 던져져서 DLT로 직행함
+            throw new IllegalArgumentException("재고 복구 이벤트 파싱 오류: payload는 null일 수 없습니다.");
+        }
+
         log.info("[Kafka Consumer] 재고 복구 이벤트 수신: optionId={}, quantity={}", payload.optionId(), payload.quantity());
 
         try {
@@ -31,11 +37,11 @@ public class OrderEventConsumer {
             log.info("[Kafka Consumer] 재고 복구 완료! optionId: {}, quantity: {}", payload.optionId(), payload.quantity());
 
         } catch (IllegalArgumentException e) {
-            // 데이터 형식이 잘못된 경우 무의미한 재시도를 막고 즉시 DLT로 보내기 위해 원래 에러를 던짐
+            // 데이터 검증 실패나 비즈니스 룰 위반 시 -> 즉각 DLT로 직행하도록 원본 예외 던짐
             log.error("[Kafka Consumer] 비즈니스/검증 룰 위반 에러 (DLT 직행 대상). optionId: {}", payload.optionId(), e);
             throw e;
         } catch (Exception e) {
-            // DB 락 타임아웃 등 일시적인 장애는 DefaultErrorHandler가 재시도할 수 있도록 래핑하여 던짐
+            // 락 대기 시간 초과 등 일시적 장애 -> 재시도(Retry)를 위해 RuntimeException으로 래핑
             log.error("[Kafka Consumer] 재고 복구 이벤트 처리 중 일시적 에러 발생 (재시도 대상). optionId: {}", payload.optionId(), e);
             throw new RuntimeException("재고 복구 컨슈머 처리 실패", e);
         }
