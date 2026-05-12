@@ -1,7 +1,7 @@
 package com.michelet.inventory.presentation;
 
 import com.michelet.common.response.ApiResponse;
-import com.michelet.inventory.application.StockCommandService;
+import com.michelet.inventory.application.StockLockFacade;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
 import com.michelet.inventory.presentation.dto.RestoreStockRequest;
 import jakarta.validation.Valid;
@@ -17,13 +17,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class InternalStockController {
 
-    private final StockCommandService stockCommandService;
+    private final StockLockFacade stockLockFacade;
 
     @PostMapping("/reserve")
     public ResponseEntity<ApiResponse<Void>> reserveStock(
         @RequestBody @Valid ReserveStockRequest request
     ) {
-        stockCommandService.reserveStockWithRetry(request);
+        stockLockFacade.reserveStockWithLock(request);
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
 
@@ -31,7 +31,7 @@ public class InternalStockController {
     public ResponseEntity<ApiResponse<Void>> restoreStock(
         @RequestBody @Valid RestoreStockRequest request
     ) {
-        stockCommandService.restoreStockWithRetry(request);
+        stockLockFacade.restoreStockWithLock(request);
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
 }
