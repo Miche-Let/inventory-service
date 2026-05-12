@@ -7,4 +7,12 @@ public record StockRestoreMessage(
     UUID optionId,
     Integer quantity
 ) {
+    public StockRestoreMessage {
+        if (optionId == null) {
+            throw new IllegalArgumentException("재고 복구 이벤트 파싱 오류: optionId는 null일 수 없습니다.");
+        }
+        if (quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("재고 복구 이벤트 파싱 오류: quantity는 1 이상이어야 합니다.");
+        }
+    }
 }
