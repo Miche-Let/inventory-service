@@ -12,8 +12,7 @@ public interface JpaStockRepository extends JpaRepository<Stock, UUID> {
     // dailyLimit, totalQuantity 중 작은 값으로 리셋함
     @Modifying(clearAutomatically = true)
     @Query("UPDATE p_stocks s " +
-        "SET s.currentDailyStock = LEAST(s.dailyLimit, s.totalQuantity), " +
-        "    s.version = s.version + 1 " +
+        "SET s.currentDailyStock = LEAST(s.dailyLimit, s.totalQuantity) " +
         "WHERE s.currentDailyStock <> LEAST(s.dailyLimit, s.totalQuantity)")
     int resetDailyStock();
 }

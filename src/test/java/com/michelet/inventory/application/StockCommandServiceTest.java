@@ -3,7 +3,6 @@ package com.michelet.inventory.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.times;
@@ -12,12 +11,13 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.michelet.inventory.application.dto.StockReservedEvent;
 import com.michelet.inventory.application.dto.StockRestoredEvent;
-import com.michelet.inventory.domain.exception.ConcurrencyFailureException;
 import com.michelet.inventory.domain.exception.MaxLimitExceededException;
 import com.michelet.inventory.domain.exception.OutOfStockException;
 import com.michelet.inventory.domain.exception.SoldOutException;
 import com.michelet.inventory.domain.exception.StockNotFoundException;
 import com.michelet.inventory.domain.model.Stock;
+import com.michelet.inventory.domain.repository.ProductOptionRepository;
+import com.michelet.inventory.domain.repository.ProductRepository;
 import com.michelet.inventory.domain.repository.StockRepository;
 import com.michelet.inventory.presentation.dto.ReserveStockRequest;
 import com.michelet.inventory.presentation.dto.RestoreStockRequest;
@@ -34,10 +34,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.transaction.support.TransactionCallback;
-import org.springframework.transaction.support.TransactionTemplate;
 
 @ExtendWith(MockitoExtension.class)
 class StockCommandServiceTest {
@@ -48,11 +45,15 @@ class StockCommandServiceTest {
     @Mock
     private StockRepository stockRepository;
 
+    // SOLDOUT 자동 전이 처리를 위한 Repository Mock 추가
     @Mock
-    private KafkaTemplate<String, Object> kafkaTemplate;
+    private ProductOptionRepository productOptionRepository;
 
     @Mock
-    private TransactionTemplate transactionTemplate;
+    private ProductRepository productRepository;
+
+    @Mock
+    private KafkaTemplate<String, Object> kafkaTemplate;
 
     // 카프카로 전송된 이벤트를 낚아채서 내부 값을 검증하기 위한 Captor
     @Captor
@@ -63,13 +64,9 @@ class StockCommandServiceTest {
 
     @BeforeEach
     void setUp() {
-        given(transactionTemplate.execute(any())).willAnswer(invocation -> {
-            TransactionCallback<?> action = invocation.getArgument(0);
-            return action.doInTransaction(null);
-        });
-        ReflectionTestUtils.setField(stockCommandService, "maxRetryCount", 3);
         ReflectionTestUtils.setField(stockCommandService, "topicStockReserved", "stock.reserved");
         ReflectionTestUtils.setField(stockCommandService, "topicStockRestored", "stock.restored");
+        ReflectionTestUtils.setField(stockCommandService, "topicStatusChanged", "product.status-changed");
     }
 
     @Test
@@ -81,11 +78,11 @@ class StockCommandServiceTest {
         ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null);
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
-        given(kafkaTemplate.send(eq("stock.reserved"), eq(optionId.toString()), any(StockReservedEvent.class)))
+        given(kafkaTemplate.send(eq("stock.reserved"), eq(optionId.toString()), any()))
             .willReturn(CompletableFuture.completedFuture(null));
 
         // when
-        stockCommandService.reserveStockWithRetry(request);
+        stockCommandService.reserveStock(request);
 
         // then
         verify(stockRepository, times(1)).save(any(Stock.class));
@@ -108,7 +105,7 @@ class StockCommandServiceTest {
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
         // when & then
-        assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
+        assertThatThrownBy(() -> stockCommandService.reserveStock(request))
             .isInstanceOf(OutOfStockException.class);
 
         // 예외가 터졌으므로 Kafka 전송은 절대 일어나지 않아야 함
@@ -127,7 +124,7 @@ class StockCommandServiceTest {
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
         // when & then
-        assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
+        assertThatThrownBy(() -> stockCommandService.reserveStock(request))
             .isInstanceOf(SoldOutException.class);
 
         verifyNoInteractions(kafkaTemplate);
@@ -145,76 +142,14 @@ class StockCommandServiceTest {
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
         // when & then
-        assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
+        assertThatThrownBy(() -> stockCommandService.reserveStock(request))
             .isInstanceOf(MaxLimitExceededException.class);
 
         verifyNoInteractions(kafkaTemplate);
     }
 
-    // N번 시도 후 성공하는 낙관적 락 재시도 테스트
     @Test
-    @DisplayName("재시도 성공: 낙관적 락 충돌이 발생해도 3회 이내면 재시도하여 성공한다.")
-    void reserveStock_Retry_Success() {
-        // given
-        UUID optionId = UUID.randomUUID();
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null);
-
-        // DB에서 최신 데이터를 다시 읽어오는 동작을 시뮬레이션 (매 호출마다 새로운 Stock 객체 반환)
-        given(stockRepository.findById(optionId)).willAnswer(invocation ->
-            Optional.of(Stock.create(optionId, 100, 50, 10))
-        );
-
-        // 첫 번째, 두 번째는 예외 발생시키고 세 번째에 정상 통과
-        given(stockRepository.save(any(Stock.class)))
-            .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId))
-            .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId))
-            .willReturn(null);
-
-        given(kafkaTemplate.send(anyString(), anyString(), any()))
-            .willReturn(CompletableFuture.completedFuture(null));
-
-        // when
-        stockCommandService.reserveStockWithRetry(request);
-
-        // then - findById가 매 재시도마다 호출되었는지(총 3회) 검증
-        verify(stockRepository, times(3)).findById(optionId);
-        verify(stockRepository, times(3)).save(any(Stock.class));
-
-        // 카프카 페이로드 내부 필드 검증
-        verify(kafkaTemplate, times(1)).send(eq("stock.reserved"), eq(optionId.toString()), eventCaptor.capture());
-        StockReservedEvent capturedEvent = eventCaptor.getValue();
-        assertThat(capturedEvent.optionId()).isEqualTo(optionId);
-        assertThat(capturedEvent.totalQuantity()).isEqualTo(98);
-        assertThat(capturedEvent.currentDailyStock()).isEqualTo(48);
-    }
-
-    // 최대 재시도 횟수 초과 실패 테스트
-    @Test
-    @DisplayName("재시도 실패: 3회를 초과하여 낙관적 락 충돌이 발생하면 예외를 던진다.")
-    void reserveStock_Retry_Fail_MaxAttempts() {
-        // given
-        UUID optionId = UUID.randomUUID();
-        ReserveStockRequest request = new ReserveStockRequest(optionId, 2, null);
-
-        given(stockRepository.findById(optionId)).willAnswer(invocation ->
-            Optional.of(Stock.create(optionId, 100, 50, 10))
-        );
-
-        // 항상 충돌 발생
-        given(stockRepository.save(any(Stock.class)))
-            .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId));
-
-        // when & then: 3번 시도 후 ConcurrencyFailureException
-        assertThatThrownBy(() -> stockCommandService.reserveStockWithRetry(request))
-            .isInstanceOf(ConcurrencyFailureException.class);
-
-        verify(stockRepository, times(3)).findById(optionId);
-        verify(stockRepository, times(3)).save(any(Stock.class)); // 정확히 3번 시도됨
-        verifyNoInteractions(kafkaTemplate); // 실패했으므로 카프카 메시지 발행 안 됨
-    }
-
-    @Test
-    @DisplayName("성공: 재고 복구 경로 정상 동작 및 Kafka 발행 테스트 (total/daily 모두 검증)")
+    @DisplayName("성공: 재고 복구 경로 정상 동작 및 Kafka 발행 테스트")
     void restoreStock_Success() {
         UUID optionId = UUID.randomUUID();
         // 1. 초기 재고 100개, 일일 재고 50개 생성
@@ -227,11 +162,11 @@ class StockCommandServiceTest {
         RestoreStockRequest request = new RestoreStockRequest(optionId, 2, null);
 
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
-        given(kafkaTemplate.send(eq("stock.restored"), eq(optionId.toString()), any(StockRestoredEvent.class)))
+        given(kafkaTemplate.send(eq("stock.restored"), eq(optionId.toString()), any()))
             .willReturn(CompletableFuture.completedFuture(null));
 
         // when
-        stockCommandService.restoreStockWithRetry(request);
+        stockCommandService.restoreStock(request);
 
         // then
         verify(stockRepository, times(1)).save(any(Stock.class));
@@ -247,29 +182,6 @@ class StockCommandServiceTest {
     }
 
     @Test
-    @DisplayName("재시도 성공: 복구 시 낙관적 락 충돌이 발생해도 재시도하여 성공한다.")
-    void restoreStock_Retry_Success() {
-        UUID optionId = UUID.randomUUID();
-        RestoreStockRequest request = new RestoreStockRequest(optionId, 2, null);
-
-        given(stockRepository.findById(optionId)).willAnswer(invocation ->
-            Optional.of(Stock.create(optionId, 100, 50, 10))
-        );
-
-        given(stockRepository.save(any(Stock.class)))
-            .willThrow(new ObjectOptimisticLockingFailureException(Stock.class.getName(), optionId))
-            .willReturn(null); // 두 번째 시도 성공
-
-        given(kafkaTemplate.send(anyString(), anyString(), any()))
-            .willReturn(CompletableFuture.completedFuture(null));
-
-        stockCommandService.restoreStockWithRetry(request);
-
-        verify(stockRepository, times(2)).findById(optionId);
-        verify(stockRepository, times(2)).save(any(Stock.class));
-    }
-
-    @Test
     @DisplayName("실패: 재고 복구 시 존재하지 않는 옵션 예외")
     void restoreStock_Fail_NotFound() {
         UUID optionId = UUID.randomUUID();
@@ -277,7 +189,7 @@ class StockCommandServiceTest {
 
         given(stockRepository.findById(optionId)).willReturn(Optional.empty());
 
-        assertThatThrownBy(() -> stockCommandService.restoreStockWithRetry(request))
+        assertThatThrownBy(() -> stockCommandService.restoreStock(request))
             .isInstanceOf(StockNotFoundException.class);
 
         verifyNoInteractions(kafkaTemplate);

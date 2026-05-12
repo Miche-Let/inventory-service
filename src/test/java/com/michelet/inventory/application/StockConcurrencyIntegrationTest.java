@@ -27,6 +27,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -39,16 +40,25 @@ class StockConcurrencyIntegrationTest {
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine");
 
+    // Redisson 분산 락 테스트를 위해 Redis 컨테이너 추가
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7.0-alpine").withExposedPorts(6379);
+
     @DynamicPropertySource
     static void configureProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", postgres::getJdbcUrl);
         registry.add("spring.datasource.username", postgres::getUsername);
         registry.add("spring.datasource.password", postgres::getPassword);
         registry.add("spring.datasource.driver-class-name", postgres::getDriverClassName);
+
+        // Redis 설정 주입
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
     }
 
+    // 서비스가 아닌 '락 파사드(Facade)'를 주입받아 동시성 테스트 진행
     @Autowired
-    private StockCommandService stockCommandService;
+    private StockLockFacade stockLockFacade;
 
     // 조회 로직을 위한 도메인 레포지토리
     @Autowired
@@ -85,7 +95,6 @@ class StockConcurrencyIntegrationTest {
     @Test
     @DisplayName("동시성: 10명이 동시에 1개씩 재고 차감을 시도하여, 성공한 횟수만큼 정확히 재고가 줄어든다.")
     void reserveStock_Concurrency() throws InterruptedException {
-        // given: 100명이 한번에 몰리면 낙관적락 재시도 3회로 감당이 안되어 모두 실패하므로, 10명으로 조정하여 검증
         int threadCount = 10;
         ExecutorService executorService = Executors.newFixedThreadPool(10);
         // 모든 쓰레드가 동시에 출발하도록 제어하는 startLatch
@@ -103,11 +112,10 @@ class StockConcurrencyIntegrationTest {
                 try {
                     // 모든 작업 쓰레드는 여기서 대기하며 신호를 기다림
                     startLatch.await();
-
-                    stockCommandService.reserveStockWithRetry(request);
+                    // 락 획득 메서드 호출
+                    stockLockFacade.reserveStockWithLock(request);
                     successCount.incrementAndGet(); // 에러 없이 통과하면 성공 횟수 1 증가
                 } catch (Exception e) {
-                    // 낙관적 락 재시도 3회 모두 실패한 스레드들은 예외를 던지며 이곳으로 옴
                     System.out.println("차감 실패: " + e.getMessage());
                 } finally {
                     doneLatch.countDown();
@@ -117,15 +125,13 @@ class StockConcurrencyIntegrationTest {
         // 대기 중이던 쓰레드를 동시에 실행 시작 (출발 신호)
         startLatch.countDown();
 
-        // 스레드 자원 누수를 막기 위해 무조건 shutdown 로직이 실행되도록 try-finally 적용
         try {
             boolean completed = doneLatch.await(30, TimeUnit.SECONDS);
-            assertThat(completed).withFailMessage("쓰레드 작업이 지정된 시간 내에 완료되지 않았습니다.").isTrue();
+            assertThat(completed).withFailMessage("쓰레드 작업 타임아웃").isTrue();
         } finally {
             executorService.shutdown();
             if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
                 executorService.shutdownNow();
-                assertThat(false).withFailMessage("ExecutorService가 정상적으로 종료되지 않았습니다.").isTrue();
             }
         }
 

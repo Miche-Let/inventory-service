@@ -9,19 +9,17 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import jakarta.persistence.Version;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.springframework.data.domain.Persistable;
 
 @Entity(name = "p_stocks")
 @Table(name = "p_stocks")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Stock extends BaseEntity implements Persistable<UUID> {
+public class Stock extends BaseEntity {
 
     @Id
     private UUID optionId; // ProductOption의 ID를 PK로 사용
@@ -38,8 +36,7 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
     @Column(nullable = false)
     private Integer maxLimit;
 
-    @Version // 낙관적 락용 버전
-    private Long version;
+    // Redisson 분산 락을 사용하므로 @Version(낙관적 락) 필드 삭제
 
     @Builder(access = AccessLevel.PRIVATE)
     private Stock(UUID optionId, Integer totalQuantity, Integer dailyLimit, Integer maxLimit) {
@@ -92,17 +89,6 @@ public class Stock extends BaseEntity implements Persistable<UUID> {
         if (requestQuantity > this.maxLimit) {
             throw new MaxLimitExceededException(this.maxLimit);
         }
-    }
-
-    @Override
-    public UUID getId() {
-        return optionId;
-    }
-
-    @Override
-    public boolean isNew() {
-        // createdAt은 DB 저장 후에 채워지므로, 객체 생성 직후엔 version(null)으로 판단하는 것이 더 정확함
-        return version == null;
     }
 
     // 복구 로직
