@@ -23,8 +23,8 @@ public class StockLockFacade {
 
         try {
             // 락 획득 시도
-            // 매개변수: 최대 5초 대기, 락 획득 시 3초간 점유 후 자동 해제(데드락 방지)
-            boolean available = lock.tryLock(5, 3, TimeUnit.SECONDS);
+            // 매개변수: 최대 5초 대기, 로직이 끝날 때까지 5초마다 락 만료 시간을 계속 연장
+            boolean available = lock.tryLock(5, TimeUnit.SECONDS);
             if (!available) {
                 log.error("[StockLockFacade] 재고 선점 락 획득 실패 - OptionId: {}", request.optionId());
                 throw new IllegalStateException("재고 선점 처리 중 락을 획득하지 못했습니다.");
@@ -49,7 +49,7 @@ public class StockLockFacade {
 
         try {
             // 복구 로직은 선점보다 더 중요하므로 대기 시간을 넉넉히(일단 10초) 줌
-            boolean available = lock.tryLock(10, 5, TimeUnit.SECONDS);
+            boolean available = lock.tryLock(10, TimeUnit.SECONDS);
             if (!available) {
                 log.error("[CRITICAL] 재고 복구 락 획득 실패 (수동 복구 필요) - OptionId: {}", request.optionId());
                 throw new IllegalStateException("재고 복구 처리 중 락을 획득하지 못했습니다.");
