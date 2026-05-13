@@ -11,7 +11,7 @@ import com.michelet.inventory.domain.model.InventoryOutbox;
 import com.michelet.inventory.domain.model.OutboxStatus;
 import com.michelet.inventory.domain.repository.InventoryOutboxRepository;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -70,21 +70,42 @@ public class InventoryOutboxScheduler {
                 // String(JSON)을 다시 원본 Event 객체로 복원
                 Object originalEventObject = deserializePayload(event.getEventType(), event.getPayload());
 
-                // 2. 카프카 전송 및 동기식 대기 (트랜잭션 밖에서 실행됨)
-                // 복원된 객체를 보내야 JsonSerializer가 __TypeId__를 세팅함
+                // 블로킹(.get) 제거 -> 비동기 발송 콜백(.whenComplete) 적용
                 kafkaTemplate.send(topic, event.getAggregateId(), originalEventObject)
-                    .get(3, TimeUnit.SECONDS);
+                    .whenComplete((result, ex) -> {
+                        if (ex == null) {
+                            try {
+                                outboxHelper.markAsPublished(event.getId());
+                                log.info("[Inventory Outbox Scheduler] 이벤트 발행 성공! Outbox ID: {}", event.getId());
+                            } catch (ObjectOptimisticLockingFailureException oole) {
+                                log.info("[Inventory Outbox Scheduler] 낙관적 락 방어 (동시성 경합). Outbox ID: {}",
+                                    event.getId());
+                            } catch (Exception updateEx) {
+                                log.error("[Inventory Outbox Scheduler] DB 상태 업데이트 실패. Outbox ID: {}", event.getId(),
+                                    updateEx);
+                            }
+                        } else {
+                            log.error("[Inventory Outbox Scheduler] 카프카 이벤트 발행 실패. Outbox ID: {}", event.getId(), ex);
+                            safeHandleFailure(event.getId());
+                        }
+                    });
 
-                outboxHelper.markAsPublished(event.getId());
-                log.info("[Inventory Outbox Scheduler] 이벤트 발행 성공! Outbox ID: {}", event.getId());
-
-            } catch (ObjectOptimisticLockingFailureException oole) {
-                // 동시성 제어 방어 로그
-                log.info("[Inventory Outbox Scheduler] 낙관적 락 충돌 방어 성공 (동시성 경합 혹은 중복 처리 방지). Outbox ID: {}",
-                    event.getId());
             } catch (Exception e) {
-                log.error("[Inventory Outbox Scheduler] 이벤트 발행 실패. 다음 주기에 재시도합니다. Outbox ID: {}", event.getId(), e);
+                // 역직렬화 실패, 토픽 변환 실패 등 무한 에러 유발 시
+                log.error("[Inventory Outbox Scheduler] 이벤트 전송 준비 중 예외 발생. Outbox ID: {}", event.getId(), e);
+                safeHandleFailure(event.getId());
             }
+        }
+    }
+
+    // 재시도 횟수 처리 및 상태 변경을 돕는 실패 처리 메서드
+    private void safeHandleFailure(UUID eventId) {
+        try {
+            outboxHelper.handleFailure(eventId);
+        } catch (ObjectOptimisticLockingFailureException oole) {
+            log.info("[Inventory Outbox Scheduler] 실패 마킹 중 낙관적 락 방어. Outbox ID: {}", eventId);
+        } catch (Exception e) {
+            log.error("[Inventory Outbox Scheduler] 실패 상태 업데이트 중 예외 발생. Outbox ID: {}", eventId, e);
         }
     }
 

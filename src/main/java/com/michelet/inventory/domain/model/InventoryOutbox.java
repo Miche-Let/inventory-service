@@ -45,6 +45,9 @@ public class InventoryOutbox extends BaseEntity {
     @Column(nullable = false, length = 20)
     private OutboxStatus status;
 
+    @Column(nullable = false)
+    private int retryCount = 0; // 재시도 횟수 관리 (기본값 0)
+
     @Version // 스케줄러 동시성 제어를 위한 낙관적 락
     private Long version;
 
@@ -55,9 +58,20 @@ public class InventoryOutbox extends BaseEntity {
         this.eventType = eventType;
         this.payload = payload;
         this.status = OutboxStatus.INIT;
+        this.retryCount = 0;
     }
 
     public void markAsPublished() {
         this.status = OutboxStatus.PUBLISHED;
+    }
+
+    // 영구 실패 상태 전이
+    public void markAsFailed() {
+        this.status = OutboxStatus.FAILED;
+    }
+
+    // 재시도 횟수 증가 로직
+    public void incrementRetryCount() {
+        this.retryCount++;
     }
 }
