@@ -125,9 +125,19 @@ class ProductCommandServiceTest {
 
         ProductCreatedEvent capturedEvent = eventCaptor.getValue();
 
-        // 캡처된 Kafka 이벤트의 페이로드(내용물)가 정확한지 추가 검증
+        // 캡처된 Kafka 이벤트의 페이로드 전체 필드 정밀 검증
         assertThat(capturedEvent.productId()).isEqualTo(savedProduct.getId());
         assertThat(capturedEvent.name()).isEqualTo("미슐랭 밀키트 세트");
+        assertThat(capturedEvent.category()).isEqualTo("MEALKIT");
+        assertThat(capturedEvent.basePrice()).isEqualByComparingTo(new BigDecimal("45000"));
+        assertThat(capturedEvent.attributes()).containsEntry("servings", 2).containsEntry("cookingTime", "20min");
+
+        // 옵션이 정확히 DTO로 변환되었는지 검증
+        assertThat(capturedEvent.options()).hasSize(2);
+        assertThat(capturedEvent.options().get(0).name()).isEqualTo("맵기 보통");
+        assertThat(capturedEvent.options().get(0).totalQuantity()).isEqualTo(100);
+        assertThat(capturedEvent.options().get(0).currentDailyStock()).isEqualTo(20);
+        assertThat(capturedEvent.options().get(0).dailyLimit()).isEqualTo(20);
 
         assertThat(result).isNotNull();
         assertThat(result.productId()).isEqualTo(savedProduct.getId());

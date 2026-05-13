@@ -87,25 +87,25 @@ public class ProductCommandService {
             CreateProductCommand.OptionCommand reqOption = requestOptions.get(i);
             ProductOption dbOption = savedOptions.get(i);
 
-            Integer currentDailyStock = Math.min(reqOption.dailyLimit(), reqOption.totalQuantity());
-
-            // DB 저장을 위한 Stock 객체 생성
-            stocks.add(Stock.create(
+            // DB 저장을 위한 Stock 객체를 먼저 생성
+            Stock stock = Stock.create(
                 dbOption.getId(),
                 reqOption.totalQuantity(),
                 reqOption.dailyLimit(),
                 reqOption.maxLimit()
-            ));
+            );
+            stocks.add(stock);
 
             // 카프카 전송을 위한 Event DTO 생성
+            // 서비스에서 Math.min을 직접 계산하지 않고, 도메인(Stock)이 계산한 최종 값을 DTO에 세팅
             optionEventDtos.add(
                 new ProductCreatedEvent.OptionEventDto(
                     dbOption.getId(),
                     dbOption.getName(),
                     dbOption.getAddPrice(),
-                    reqOption.totalQuantity(),
-                    currentDailyStock,
-                    reqOption.dailyLimit()
+                    stock.getTotalQuantity(),
+                    stock.getCurrentDailyStock(), // Stock 객체에서 꺼내씀!
+                    stock.getDailyLimit()
                 ));
         }
         stockRepository.saveAll(stocks);

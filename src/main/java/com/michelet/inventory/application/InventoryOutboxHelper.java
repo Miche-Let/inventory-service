@@ -3,7 +3,7 @@ package com.michelet.inventory.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.michelet.inventory.domain.model.InventoryOutbox;
-import com.michelet.inventory.infrastructure.repository.JpaInventoryOutboxRepository;
+import com.michelet.inventory.domain.repository.InventoryOutboxRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,12 +16,25 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class InventoryOutboxHelper {
 
-    private final JpaInventoryOutboxRepository outboxRepository;
+    private final InventoryOutboxRepository outboxRepository;
     private final ObjectMapper objectMapper;
 
     // 비즈니스 로직(재고 차감 등)과 동일한 트랜잭션으로 묶여서 실패 시 함께 롤백됨
     @Transactional(propagation = Propagation.REQUIRED)
     public void append(String aggregateType, String aggregateId, String eventType, Object payloadObj) {
+        if (aggregateType == null || aggregateType.isBlank()) {
+            throw new IllegalArgumentException("aggregateType은 필수입니다.");
+        }
+        if (aggregateId == null || aggregateId.isBlank()) {
+            throw new IllegalArgumentException("aggregateId는 필수입니다.");
+        }
+        if (eventType == null || eventType.isBlank()) {
+            throw new IllegalArgumentException("eventType은 필수입니다.");
+        }
+        if (payloadObj == null) {
+            throw new IllegalArgumentException("payloadObj는 필수입니다.");
+        }
+
         try {
             String payloadJson = objectMapper.writeValueAsString(payloadObj);
             InventoryOutbox outbox = InventoryOutbox.builder()
@@ -33,7 +46,8 @@ public class InventoryOutboxHelper {
             outboxRepository.save(outbox);
             log.info("[Inventory Outbox] 이벤트 적재 완료: type={}, id={}", eventType, aggregateId);
         } catch (JsonProcessingException e) {
-            log.error("Outbox 페이로드 직렬화 실패. aggregateId={}, eventType={}", aggregateId, eventType, e);
+            log.error("Outbox 페이로드 직렬화 실패. aggregateId={}, eventType={}, error={}",
+                aggregateId, eventType, e.getMessage(), e);
             throw new RuntimeException("Outbox 이벤트 생성 중 오류가 발생했습니다.", e);
         }
     }
