@@ -61,7 +61,7 @@ public class InventoryOutboxHelper {
     public void markAsPublished(UUID outboxId) {
         outboxRepository.findById(outboxId).ifPresentOrElse(
             outbox -> {
-                if (outbox.getStatus() == OutboxStatus.PUBLISHED) {
+                if (outbox.getStatus() != OutboxStatus.INIT) {
                     return;
                 }
                 outbox.markAsPublished();
@@ -75,6 +75,9 @@ public class InventoryOutboxHelper {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handleFailure(UUID outboxId) {
         outboxRepository.findById(outboxId).ifPresent(outbox -> {
+            if (outbox.getStatus() != OutboxStatus.INIT) {
+                return;
+            }
             outbox.incrementRetryCount();
             if (outbox.getRetryCount() >= maxRetries) { // 3번 이상 실패 시 영구 실패 처리
                 outbox.markAsFailed();
