@@ -48,8 +48,11 @@ public class KafkaConfig {
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer,
             new FixedBackOff(retryIntervalMs, retryMaxAttempts));
 
-        // 3. 특정 예외(형식이 아예 틀린 경우)는 재시도해봤자 의미 없으므로 즉시 DLT로 직행
-        errorHandler.addNotRetryableExceptions(IllegalArgumentException.class);
+        // 3. 재시도가 의미 없는 예외만 즉시 DLT로 보냄
+        errorHandler.addNotRetryableExceptions(
+            org.springframework.kafka.support.serializer.DeserializationException.class,
+            IllegalArgumentException.class
+        );
 
         return errorHandler;
     }
@@ -72,11 +75,21 @@ public class KafkaConfig {
     ) {
         ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
         Map<String, Object> props = new HashMap<>(consumerFactory.getConfigurationProperties());
+
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+
+        // ErrorHandlingDeserializer/Json 관련 잔여 설정 일관성 있게 정리
+        props.remove("spring.deserializer.key.delegate.class");
         props.remove("spring.deserializer.value.delegate.class");
+        props.remove("spring.json.trusted.packages");
+        props.remove("spring.json.type.mapping");
 
         factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(props));
+
+        // DLT 처리 실패 시 기본 핸들러(FixedBackOff(0,9))로 폴백되지 않도록 명시적 지정
+        factory.setCommonErrorHandler(new DefaultErrorHandler(new FixedBackOff(0L, 0L)));
+
         return factory;
     }
 }

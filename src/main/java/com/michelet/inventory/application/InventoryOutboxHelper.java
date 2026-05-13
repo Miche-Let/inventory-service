@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.michelet.inventory.domain.model.InventoryOutbox;
 import com.michelet.inventory.domain.model.OutboxStatus;
 import com.michelet.inventory.domain.repository.InventoryOutboxRepository;
+import jakarta.annotation.PostConstruct;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,8 +25,16 @@ public class InventoryOutboxHelper {
     @Value("${inventory.outbox.max-retries:3}")
     private int maxRetries;
 
-    // 비즈니스 로직(재고 차감 등)과 동일한 트랜잭션으로 묶여서 실패 시 함께 롤백됨
-    @Transactional(propagation = Propagation.REQUIRED)
+    // 시작 시점에 maxRetries 값 검증
+    @PostConstruct
+    public void validateMaxRetries() {
+        if (maxRetries < 1) {
+            throw new IllegalStateException("inventory.outbox.max-retries 설정 오류: 반드시 1 이상이어야 합니다.");
+        }
+    }
+
+    // MANDATORY로 변경하여 부모 트랜잭션이 없으면 즉각 실패하도록 원자성 강제
+    @Transactional(propagation = Propagation.MANDATORY)
     public void append(String aggregateType, String aggregateId, String eventType, Object payloadObj) {
         if (aggregateType == null || aggregateType.isBlank()) {
             throw new IllegalArgumentException("aggregateType은 필수입니다.");
