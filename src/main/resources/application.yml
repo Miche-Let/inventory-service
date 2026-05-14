@@ -32,7 +32,7 @@ spring:
             properties:
                 # 실제 역직렬화를 수행할 델리게이트 클래스 지정
                 spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
-                spring.json.trusted.packages: "com.michelet.*"
+                spring.json.trusted.packages: "com.michelet.inventory.infrastructure.messaging.dto,com.michelet.order.application.dto"
                 spring.json.use.type.headers: true
                 # 서로 다른 패키지의 이벤트를 1:1로 매핑
                 spring.json.type.mapping: "com.michelet.order.application.dto.StockRestoreEventPayload:com.michelet.inventory.infrastructure.messaging.dto.StockRestoreMessage"

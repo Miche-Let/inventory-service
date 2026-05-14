@@ -19,7 +19,7 @@ public class OrderEventConsumer {
         topics = "${inventory.kafka.topic.restore-request:order.stock-restore.requested}",
         groupId = "${spring.kafka.consumer.group-id:inventory-service-consumer}"
     )
-    public void consumeStockRestoredEvent(StockRestoreMessage payload) {
+    public void consumeStockRestoreRequest(StockRestoreMessage payload) {
         if (payload == null) {
             log.error("[Kafka Consumer] 잘못된 복구 이벤트 수신: payload가 null입니다 (Tombstone 메시지일 가능성).");
             // IllegalArgumentException을 던지면 아래 catch 블록에서 잡지 않고 밖으로 던져져서 DLT로 직행함

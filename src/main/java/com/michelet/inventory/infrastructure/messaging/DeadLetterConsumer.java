@@ -20,8 +20,8 @@ public class DeadLetterConsumer {
     @KafkaListener(
         topics = {
             "${inventory.kafka.topic.restore-request:order.stock-restore.requested}.DLT",
-            "${inventory.kafka.topic.stock-restored:stock.restored}.DLT",
-            "${inventory.kafka.topic.stock-reserved:stock.reserved}.DLT"
+            "${inventory.kafka.topic.restored:stock.restored}.DLT",
+            "${inventory.kafka.topic.reserved:stock.reserved}.DLT"
         },
         groupId = "${spring.kafka.consumer.group-id:inventory-service-consumer}-dlt",
         containerFactory = "dltListenerContainerFactory" // String 전용 팩토리 사용
