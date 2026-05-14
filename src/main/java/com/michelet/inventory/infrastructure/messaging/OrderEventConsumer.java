@@ -26,15 +26,18 @@ public class OrderEventConsumer {
             throw new IllegalArgumentException("재고 복구 이벤트 파싱 오류: payload는 null일 수 없습니다.");
         }
 
-        log.info("[Kafka Consumer] 재고 복구 이벤트 수신: optionId={}, quantity={}", payload.optionId(), payload.quantity());
+        log.info("[Kafka Consumer] 재고 복구 이벤트 수신: eventId={}, optionId={}, quantity={}", payload.eventId(),
+            payload.optionId(), payload.quantity());
 
         try {
             // 파사드를 통해 분산 락을 걸고 안전하게 재고 복구 로직 실행
-            // TODO(`#26`): reservationId를 Kafka 페이로드에 포함시켜 멱등성 키로 활용
-            RestoreStockRequest request = new RestoreStockRequest(payload.optionId(), payload.quantity(), null);
+            // 전달받은 eventId를 파사드 요청에 포함
+            RestoreStockRequest request = new RestoreStockRequest(payload.optionId(), payload.quantity(),
+                payload.eventId());
             stockLockFacade.restoreStockWithLock(request);
 
-            log.info("[Kafka Consumer] 재고 복구 완료! optionId: {}, quantity: {}", payload.optionId(), payload.quantity());
+            log.info("[Kafka Consumer] 재고 복구 로직 처리 완료! eventId: {}, optionId: {}, quantity: {}", payload.eventId(),
+                payload.optionId(), payload.quantity());
 
         } catch (IllegalArgumentException e) {
             // 데이터 검증 실패나 비즈니스 룰 위반 시 -> 즉각 DLT로 직행하도록 원본 예외 던짐
