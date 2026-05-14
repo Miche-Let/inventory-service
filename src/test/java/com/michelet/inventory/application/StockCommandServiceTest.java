@@ -16,6 +16,7 @@ import com.michelet.inventory.domain.exception.OutOfStockException;
 import com.michelet.inventory.domain.exception.SoldOutException;
 import com.michelet.inventory.domain.exception.StockNotFoundException;
 import com.michelet.inventory.domain.model.Stock;
+import com.michelet.inventory.domain.repository.ProcessedEventRepository;
 import com.michelet.inventory.domain.repository.ProductOptionRepository;
 import com.michelet.inventory.domain.repository.ProductRepository;
 import com.michelet.inventory.domain.repository.StockRepository;
@@ -50,6 +51,10 @@ class StockCommandServiceTest {
 
     @Mock
     private InventoryOutboxHelper outboxHelper;
+
+    // 멱등성 검증을 위한 Mock 객체 추가
+    @Mock
+    private ProcessedEventRepository processedEventRepository;
 
     // 카프카로 전송된 이벤트를 낚아채서 내부 값을 검증하기 위한 Captor
     @Captor
@@ -139,18 +144,22 @@ class StockCommandServiceTest {
     }
 
     @Test
-    @DisplayName("성공: 재고 복구 경로 정상 동작 및 Outbox 적재 테스트")
+    @DisplayName("성공: 재고 복구 경로 정상 동작 및 멱등키, Outbox 적재 테스트")
     void restoreStock_Success() {
         UUID optionId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID(); // 멱등키(메시지 ID)
+
         // 1. 초기 재고 100개, 일일 재고 50개 생성
         Stock stock = Stock.create(optionId, 100, 50, 10);
 
         // 2. 소비된 상태를 시뮬레이션하기 위해 미리 2개를 차감 (total: 98, daily: 48)
         stock.reserve(2);
 
-        // 3. 다시 2개를 복구해 달라는 요청
-        RestoreStockRequest request = new RestoreStockRequest(optionId, 2, null);
+        // 3. 다시 2개를 복구해 달라는 요청 - eventId를 포함하여 요청 객체 생성
+        RestoreStockRequest request = new RestoreStockRequest(optionId, 2, eventId);
 
+        // 처음 들어온 메시지이므로 existsById는 false를 반환하도록 Mocking
+        given(processedEventRepository.existsById(eventId)).willReturn(false);
         given(stockRepository.findById(optionId)).willReturn(Optional.of(stock));
 
         // when
@@ -169,12 +178,34 @@ class StockCommandServiceTest {
         assertThat(event.currentDailyStock()).isEqualTo(50);
     }
 
+    // 멱등성 보장 핵심 테스트
+    @Test
+    @DisplayName("성공(멱등성): 이미 처리된 이벤트인 경우 이중 복구를 수행하지 않고 무시한다.")
+    void restoreStock_Idempotency() {
+        UUID optionId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        RestoreStockRequest request = new RestoreStockRequest(optionId, 2, eventId);
+
+        // DB에 이미 eventId가 저장되어 있다고(처리되었다고) Mocking
+        given(processedEventRepository.existsById(eventId)).willReturn(true);
+
+        // when
+        stockCommandService.restoreStock(request);
+
+        // then: DB 조회나 아웃박스 저장이 단 한 번도 호출되지 않아야 함! (이중 복구 방지 증명)
+        verifyNoInteractions(stockRepository);
+        verifyNoInteractions(outboxHelper);
+    }
+
     @Test
     @DisplayName("실패: 재고 복구 시 존재하지 않는 옵션 예외")
     void restoreStock_Fail_NotFound() {
         UUID optionId = UUID.randomUUID();
-        RestoreStockRequest request = new RestoreStockRequest(optionId, 5, null);
+        UUID eventId = UUID.randomUUID();
+        RestoreStockRequest request = new RestoreStockRequest(optionId, 5, eventId);
 
+        // 멱등성 검사 통과 설정
+        given(processedEventRepository.existsById(eventId)).willReturn(false);
         given(stockRepository.findById(optionId)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> stockCommandService.restoreStock(request))

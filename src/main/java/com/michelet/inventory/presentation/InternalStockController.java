@@ -27,6 +27,10 @@ public class InternalStockController {
         return ResponseEntity.ok(ApiResponse.ok(null));
     }
 
+    /**
+     * Kafka 비동기 통신(order.stock-restore.requested)으로 대체됨. 향후 삭제 예정
+     */
+    @Deprecated(since = "1.0", forRemoval = true)
     @PostMapping("/restore")
     public ResponseEntity<ApiResponse<Void>> restoreStock(
         @RequestBody @Valid RestoreStockRequest request

@@ -4,10 +4,14 @@ import java.util.UUID;
 
 // 오더 서비스가 발행한 이벤트를 읽어들이기 위한 수신 전용 DTO
 public record StockRestoreMessage(
+    UUID eventId, // 멱등성 검증용 고유 이벤트 ID
     UUID optionId,
     Integer quantity
 ) {
     public StockRestoreMessage {
+        if (eventId == null) {
+            throw new IllegalArgumentException("재고 복구 이벤트 파싱 오류: eventId는 null일 수 없습니다.");
+        }
         if (optionId == null) {
             throw new IllegalArgumentException("재고 복구 이벤트 파싱 오류: optionId는 null일 수 없습니다.");
         }
