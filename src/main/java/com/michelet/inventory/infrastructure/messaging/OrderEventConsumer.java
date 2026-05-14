@@ -16,7 +16,7 @@ public class OrderEventConsumer {
     private final StockLockFacade stockLockFacade;
 
     @KafkaListener(
-        topics = "${inventory.kafka.topic.restored:stock.restored}",
+        topics = "${inventory.kafka.topic.restore-request:order.stock-restore.requested}",
         groupId = "${spring.kafka.consumer.group-id:inventory-service-consumer}"
     )
     public void consumeStockRestoredEvent(StockRestoreMessage payload) {
