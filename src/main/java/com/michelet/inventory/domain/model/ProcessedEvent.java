@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -25,7 +26,7 @@ public class ProcessedEvent {
     private Instant processedAt;
 
     public ProcessedEvent(UUID eventId) {
-        this.eventId = eventId;
+        this.eventId = Objects.requireNonNull(eventId, "eventId는 null일 수 없습니다");
         this.processedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
     }
 }
