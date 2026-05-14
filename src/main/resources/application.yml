@@ -51,6 +51,12 @@ inventory:
             status-changed: "product.status-changed"
             daily-reset: "stock.daily-reset"
             product-updated: "product.updated"
+        consumer:
+            retry:
+                interval-ms: 1000
+                max-attempts: 3
+    outbox:
+        max-retries: 3 # 최대 재시도 횟수 설정
 
 internal:
     auth:

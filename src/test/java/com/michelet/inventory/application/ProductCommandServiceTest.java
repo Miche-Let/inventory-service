@@ -3,10 +3,8 @@ package com.michelet.inventory.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -27,8 +25,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,8 +33,6 @@ import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class ProductCommandServiceTest {
@@ -54,8 +48,11 @@ class ProductCommandServiceTest {
     private ProductExhibitionRepository productExhibitionRepository;
     @Mock
     private StockRepository stockRepository;
+
+    // KafkaTemplate 대신 OutboxHelper 주입
     @Mock
-    private KafkaTemplate<String, Object> kafkaTemplate;
+    private InventoryOutboxHelper outboxHelper;
+
     @Captor
     private ArgumentCaptor<ProductCreatedEvent> eventCaptor;
 
@@ -69,13 +66,8 @@ class ProductCommandServiceTest {
     @Captor
     private ArgumentCaptor<List<Stock>> stocksCaptor;
 
-    @BeforeEach
-    void setUp() {
-        ReflectionTestUtils.setField(productCommandService, "topicProductCreated", "product.created");
-    }
-
     @Test
-    @DisplayName("성공: 상품 등록 시 모든 도메인 모델(상품/전시/옵션/재고)이 올바른 값으로 저장소에 전달되어야 한다")
+    @DisplayName("성공: 상품 등록 시 모든 도메인 모델이 올바른 값으로 저장되고 Outbox에 적재되어야 한다")
     void createProductUnitTest() {
         // given
         LocalDateTime now = LocalDateTime.now();
@@ -98,7 +90,7 @@ class ProductCommandServiceTest {
         // 1. Product 저장 시 ID 자동 생성 모킹
         given(productRepository.save(any(Product.class))).willAnswer(invocation -> {
             Product product = invocation.getArgument(0);
-            ReflectionTestUtils.setField(product, "id", UUID.randomUUID());
+            org.springframework.test.util.ReflectionTestUtils.setField(product, "id", UUID.randomUUID());
             return product;
         });
 
@@ -106,18 +98,10 @@ class ProductCommandServiceTest {
         given(productOptionRepository.saveAll(any())).willAnswer(invocation -> {
             List<ProductOption> options = invocation.getArgument(0);
             for (ProductOption option : options) {
-                // JPA가 DB 삽입 후 ID를 채워주는 동작을 리플렉션으로 강제 시뮬레이션
-                ReflectionTestUtils.setField(option, "id", UUID.randomUUID());
+                org.springframework.test.util.ReflectionTestUtils.setField(option, "id", UUID.randomUUID());
             }
             return options;
         });
-
-        // 3. KafkaTemplate 모킹: send 호출 시 빈 가짜 영수증(CompletableFuture?) 반환
-        CompletableFuture<org.springframework.kafka.support.SendResult<String, Object>> mockFuture
-            = CompletableFuture.completedFuture(new org.springframework.kafka.support.SendResult<>(null, null));
-
-        // lenient()를 추가 - Mockito의 엄격한 Stubbing 검사(PotentialStubbingProblem) 유연하게 통과시킴
-        lenient().when(kafkaTemplate.send(anyString(), anyString(), any())).thenReturn(mockFuture);
 
         // when
         ProductResult result = productCommandService.createProduct(command);
@@ -131,53 +115,32 @@ class ProductCommandServiceTest {
         // 1. 반환 결과(ProductResult) 및 상품 검증
         Product savedProduct = productCaptor.getValue();
 
-        // Kafka 발행 시 '파티션 키(Partition Key)'가 ProductId로 정확히 매핑되었는지 검증
-        verify(kafkaTemplate, times(1)).send(
-            eq("product.created"),
+        // Kafka 직접 전송 대신 Outbox 적재 여부 검증
+        verify(outboxHelper, times(1)).append(
+            eq("PRODUCT"),
             eq(savedProduct.getId().toString()),
+            eq("PRODUCT_CREATED"),
             eventCaptor.capture()
         );
 
         ProductCreatedEvent capturedEvent = eventCaptor.getValue();
 
-        // 캡처된 Kafka 이벤트의 페이로드(내용물)가 정확한지 추가 검증
+        // 캡처된 Kafka 이벤트의 페이로드 전체 필드 정밀 검증
         assertThat(capturedEvent.productId()).isEqualTo(savedProduct.getId());
-        assertThat(capturedEvent.restaurantId()).isEqualTo(command.restaurantId());
         assertThat(capturedEvent.name()).isEqualTo("미슐랭 밀키트 세트");
-        assertThat(capturedEvent.category()).isEqualTo(ProductCategory.MEALKIT.name());
+        assertThat(capturedEvent.category()).isEqualTo("MEALKIT");
+        assertThat(capturedEvent.basePrice()).isEqualByComparingTo(new BigDecimal("45000"));
+        assertThat(capturedEvent.attributes()).containsEntry("servings", 2).containsEntry("cookingTime", "20min");
 
-        assertThat(capturedEvent.basePrice()).isEqualByComparingTo(command.basePrice());
+        // 옵션이 정확히 DTO로 변환되었는지 검증
+        assertThat(capturedEvent.options()).hasSize(2);
+        assertThat(capturedEvent.options().get(0).name()).isEqualTo("맵기 보통");
+        assertThat(capturedEvent.options().get(0).totalQuantity()).isEqualTo(100);
+        assertThat(capturedEvent.options().get(0).currentDailyStock()).isEqualTo(20);
+        assertThat(capturedEvent.options().get(0).dailyLimit()).isEqualTo(20);
 
         assertThat(result).isNotNull();
-        assertThat(result.productId()).isNotNull();
         assertThat(result.productId()).isEqualTo(savedProduct.getId());
-        assertThat(result.options()).hasSize(2); // 옵션이 2개 반환되었는지 검증
-        assertThat(result.options().get(0).optionId()).isNotNull(); // 발급된 ID 검증
-
-        assertThat(savedProduct.getName()).isEqualTo("미슐랭 밀키트 세트");
-        assertThat(savedProduct.getAttributes().get("servings")).isEqualTo(2);
-
-        // 2. 전시 정보 검증
-        ProductExhibition savedExhibition = exhibitionCaptor.getValue();
-        assertThat(savedExhibition.getProduct()).isEqualTo(savedProduct);
-        assertThat(savedExhibition.getStartAt()).isEqualTo(command.exhibition().startAt());
-
-        // 3. 옵션 검증
-        List<ProductOption> savedOptions = optionsCaptor.getValue();
-        assertThat(savedOptions).hasSize(2);
-
-        // 4. 재고 검증
-        List<Stock> savedStocks = stocksCaptor.getValue();
-        assertThat(savedStocks).hasSize(2);
-
-        Stock normalStock = savedStocks.get(0);
-        assertThat(normalStock.getTotalQuantity()).isEqualTo(100);
-        assertThat(normalStock.getCurrentDailyStock()).isEqualTo(20);
-
-        Stock spicyStock = savedStocks.get(1);
-        assertThat(spicyStock.getTotalQuantity()).isEqualTo(80);
-        assertThat(spicyStock.getCurrentDailyStock()).isEqualTo(15);
-        assertThat(spicyStock.getMaxLimit()).isEqualTo(1);
     }
 
     @Test

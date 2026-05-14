@@ -441,3 +441,27 @@ X-Internal-Token: {{inv_internal_token}}
         client.log("모든 재고 소진 완료! (Product 상태 SOLDOUT 자동 전이 및 이벤트 발행됨)");
     });
 %}
+
+### [Internal Token] 내부 통신용 토큰 갱신
+GET http://{{host}}:{{orderPort}}/test/internal-token?audience=inventory-service
+
+> {%
+    client.global.set("inv_internal_token", response.body);
+    client.log("전역변수 저장: inv_internal_token");
+%}
+
+### 14. [Internal] Inventory Outbox 스케줄러 강제 트리거
+# DB에 적재된 INIT 상태의 Outbox 이벤트들을 읽어 카프카로 일괄 발행
+POST http://{{host}}:{{inventoryPort}}/internal/scheduler/trigger-outbox
+Content-Type: application/json
+X-Internal-Token: {{inv_internal_token}}
+
+> {%
+    client.test("Inventory Outbox 스케줄러 실행 확인", function () {
+        client.assert(response.status === 200, "스케줄러 호출 실패");
+        client.log("=======================================");
+        client.log("성공! Inventory 서버의 Outbox 스케줄러가 수동 가동되었습니다.");
+        client.log("서버 콘솔에 [Inventory Outbox Scheduler] 이벤트 발행 성공! 로그가 찍히는지 확인하기");
+        client.log("=======================================");
+    });
+%}

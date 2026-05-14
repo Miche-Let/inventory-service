@@ -15,18 +15,13 @@ import com.michelet.inventory.domain.repository.ProductExhibitionRepository;
 import com.michelet.inventory.domain.repository.ProductOptionRepository;
 import com.michelet.inventory.domain.repository.ProductRepository;
 import com.michelet.inventory.domain.repository.StockRepository;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -39,41 +34,40 @@ public class ProductCommandService {
     private final ProductExhibitionRepository productExhibitionRepository;
     private final StockRepository stockRepository;
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
-
-    @Value("${inventory.kafka.topic.product-created:product.created}")
-    private String topicProductCreated;
-
-    @Value("${inventory.kafka.topic.product-updated:product.updated}")
-    private String topicProductUpdated;
-
-    @Value("${inventory.kafka.topic.status-changed:product.status-changed}")
-    private String topicStatusChanged;
+    // OutboxHelper로 교체
+    private final InventoryOutboxHelper outboxHelper;
 
     @Transactional(readOnly = true)
     public String checkHealth() {
         return "Inventory Command Service is Healthy";
     }
 
-    @Transactional
     public ProductResult createProduct(CreateProductCommand command) {
         // 1. p_products 저장
         Product product = Product.create(
-            command.restaurantId(), command.name(), command.category(),
-            command.basePrice(), command.attributes()
+            command.restaurantId(),
+            command.name(),
+            command.category(),
+            command.basePrice(),
+            command.attributes()
         );
         productRepository.save(product);
 
         // 2. p_product_exhibitions 저장
-        productExhibitionRepository.save(ProductExhibition.create(
-            product, command.exhibition().startAt(), command.exhibition().endAt()
-        ));
+        productExhibitionRepository.save(
+            ProductExhibition.create(
+                product,
+                command.exhibition().startAt(),
+                command.exhibition().endAt()
+            ));
 
         // 3. 옵션(Options) 리스트 생성 및 일괄 저장
         List<ProductOption> options = command.options().stream()
-            .map(opt -> ProductOption.create(product, opt.name(), opt.addPrice()))
-            .toList();
-
+            .map(opt -> ProductOption.create(
+                product,
+                opt.name(),
+                opt.addPrice()
+            )).toList();
         // saveAll을 호출하면 ID가 채워진 저장된 리스트가 반환됨
         List<ProductOption> savedOptions = productOptionRepository.saveAll(options);
 
@@ -86,38 +80,33 @@ public class ProductCommandService {
         // 리스트 크기 불일치 시 명확한 에러 발생
         if (savedOptions.size() != requestOptions.size()) {
             throw new IllegalStateException(
-                String.format("저장된 옵션 개수(%d)와 요청된 옵션 개수(%d)가 일치하지 않습니다.",
-                    savedOptions.size(), requestOptions.size())
-            );
+                String.format("저장된 옵션 개수(%d)와 요청된 옵션 개수(%d)가 일치하지 않습니다.", savedOptions.size(), requestOptions.size()));
         }
 
         for (int i = 0; i < savedOptions.size(); i++) {
             CreateProductCommand.OptionCommand reqOption = requestOptions.get(i);
             ProductOption dbOption = savedOptions.get(i);
 
-            // Positional Arguments 실수 방지를 위해 명시적 지역변수 선언
-            BigDecimal addPrice = dbOption.getAddPrice();
-            Integer totalQuantity = reqOption.totalQuantity();
-            Integer dailyLimit = reqOption.dailyLimit();
-            Integer currentDailyStock = Math.min(dailyLimit, totalQuantity);
-
-            // DB 저장을 위한 Stock 객체 생성
-            stocks.add(Stock.create(
+            // DB 저장을 위한 Stock 객체를 먼저 생성
+            Stock stock = Stock.create(
                 dbOption.getId(),
-                totalQuantity,
-                dailyLimit,
+                reqOption.totalQuantity(),
+                reqOption.dailyLimit(),
                 reqOption.maxLimit()
-            ));
+            );
+            stocks.add(stock);
 
             // 카프카 전송을 위한 Event DTO 생성
-            optionEventDtos.add(new ProductCreatedEvent.OptionEventDto(
-                dbOption.getId(),
-                dbOption.getName(),
-                addPrice,
-                totalQuantity,
-                currentDailyStock,
-                dailyLimit
-            ));
+            // 서비스에서 Math.min을 직접 계산하지 않고, 도메인(Stock)이 계산한 최종 값을 DTO에 세팅
+            optionEventDtos.add(
+                new ProductCreatedEvent.OptionEventDto(
+                    dbOption.getId(),
+                    dbOption.getName(),
+                    dbOption.getAddPrice(),
+                    stock.getTotalQuantity(),
+                    stock.getCurrentDailyStock(), // Stock 객체에서 꺼내씀!
+                    stock.getDailyLimit()
+                ));
         }
         stockRepository.saveAll(stocks);
 
@@ -134,29 +123,16 @@ public class ProductCommandService {
             optionEventDtos
         );
 
-        // 6. DB 커밋 완료 후에만 카프카 메시지 전송 (정합성 보장) 및 Callback 확인
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    sendKafkaMessageWithCallback(topicProductCreated, event.productId(), event);
-                }
-            });
-        } else {
-            // 단위 테스트 등 트랜잭션 동기화가 활성화되지 않은 환경을 위한 폴백
-            sendKafkaMessageWithCallback(topicProductCreated, event.productId(), event);
-        }
+        // 6. 트랜잭션 동기화 및 카프카 직접 전송 로직 제거 후 Outbox 저장
+        outboxHelper.append("PRODUCT", product.getId().toString(), "PRODUCT_CREATED", event);
 
         // 7. 결과 반환 (옵션 리스트 포함)
         List<ProductResult.OptionResult> optionResults = savedOptions.stream()
-            .map(opt -> new ProductResult.OptionResult(opt.getId(), opt.getName()))
-            .toList();
-
+            .map(opt -> new ProductResult.OptionResult(opt.getId(), opt.getName())).toList();
         return new ProductResult(product.getId(), optionResults);
     }
 
     // 상품 수정 로직
-    @Transactional
     public void updateProduct(UUID productId, UpdateProductCommand command) {
         Product product = productRepository.findById(productId)
             .orElseThrow(() -> new IllegalArgumentException("상품을 찾을 수 없습니다."));
@@ -172,21 +148,10 @@ public class ProductCommandService {
             product.getBasePrice(),
             product.getAttributes()
         );
-
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    sendKafkaMessageWithCallback(topicProductUpdated, product.getId(), event);
-                }
-            });
-        } else {
-            sendKafkaMessageWithCallback(topicProductUpdated, product.getId(), event);
-        }
+        outboxHelper.append("PRODUCT", product.getId().toString(), "PRODUCT_UPDATED", event);
     }
 
     // 상품 삭제 로직
-    @Transactional
     public void deleteProduct(UUID productId) {
         Product product = productRepository.findById(productId)
             .orElseThrow(() -> new IllegalArgumentException("상품을 찾을 수 없습니다."));
@@ -195,31 +160,6 @@ public class ProductCommandService {
         product.changeStatus(ProductStatus.DELETED);
 
         ProductStatusChangedEvent event = new ProductStatusChangedEvent(product.getId(), product.getStatus().name());
-
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    sendKafkaMessageWithCallback(topicStatusChanged, product.getId(), event);
-                }
-            });
-        } else {
-            sendKafkaMessageWithCallback(topicStatusChanged, product.getId(), event);
-        }
-    }
-
-    // 범용적으로 쓸 수 있게 파라미터 변경
-    private void sendKafkaMessageWithCallback(String topic, UUID key, Object event) {
-        log.info("DB 커밋 완료. 카프카 이벤트 발행 요청: topic={}, key={}", topic, key);
-        kafkaTemplate.send(topic, key.toString(), event)
-            .whenComplete((result, ex) -> {
-                if (ex == null) {
-                    log.info("이벤트 발행 실제 성공: topic={}, key={}, offset={}",
-                        topic, key, result.getRecordMetadata().offset());
-                } else {
-                    log.error("이벤트 발행 실패 (Dead Letter Queue 처리 필요): topic={}, key={}",
-                        topic, key, ex);
-                }
-            });
+        outboxHelper.append("PRODUCT", product.getId().toString(), "PRODUCT_STATUS_CHANGED", event);
     }
 }

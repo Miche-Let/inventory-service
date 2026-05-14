@@ -9,17 +9,13 @@ import java.time.ZoneId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Slice;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -27,7 +23,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class ExhibitionSchedulerService {
 
     private final ProductRepository productRepository;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final InventoryOutboxHelper outboxHelper;
 
     // Spring AOP의 프록시를 타기 위한 자기 자신 주입
     @Lazy
@@ -37,11 +33,7 @@ public class ExhibitionSchedulerService {
     private static final int CHUNK_SIZE = 100;
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
 
-    @Value("${inventory.kafka.topic.status-changed:product.status-changed}")
-    private String topicStatusChanged;
-
-    // 외부 진입점의 @Transactional을 제거하여 영속성 컨텍스트 비대화를 막음
-    @Scheduled(cron = "0 0 * * * *", zone = "Asia/Seoul") // 매 정시(0분 0초)마다 실행
+    @Scheduled(cron = "0 0 * * * *", zone = "Asia/Seoul")  // 매 정시(0분 0초)마다 실행
     public void updateExhibitionStatus() {
         log.info("정시 전시 상태 변경 스케줄러 시작...");
         LocalDateTime now = LocalDateTime.now(SEOUL_ZONE);
@@ -78,7 +70,7 @@ public class ExhibitionSchedulerService {
 
         for (Product product : slice.getContent()) {
             product.changeStatus(ProductStatus.ACTIVE);
-            publishStatusChangeEventAfterCommit(product);
+            publishStatusChangeEvent(product);
         }
 
         return slice.getNumberOfElements();
@@ -90,34 +82,14 @@ public class ExhibitionSchedulerService {
 
         for (Product product : slice.getContent()) {
             product.changeStatus(ProductStatus.EXPIRED);
-            publishStatusChangeEventAfterCommit(product);
+            publishStatusChangeEvent(product);
         }
 
         return slice.getNumberOfElements();
     }
 
-    // DB 커밋 성공 시에만 카프카로 이벤트 발행 보장
-    private void publishStatusChangeEventAfterCommit(Product product) {
+    private void publishStatusChangeEvent(Product product) {
         ProductStatusChangedEvent event = new ProductStatusChangedEvent(product.getId(), product.getStatus().name());
-
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    sendKafkaEvent(product, event);
-                }
-            });
-        } else {
-            sendKafkaEvent(product, event);
-        }
-    }
-
-    private void sendKafkaEvent(Product product, ProductStatusChangedEvent event) {
-        kafkaTemplate.send(topicStatusChanged, product.getId().toString(), event)
-            .whenComplete((result, ex) -> {
-                if (ex != null) {
-                    log.error("상품 상태 변경 카프카 이벤트 발행 실패: productId={}", product.getId(), ex);
-                }
-            });
+        outboxHelper.append("PRODUCT", product.getId().toString(), "PRODUCT_STATUS_CHANGED", event);
     }
 }

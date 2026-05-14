@@ -2,6 +2,7 @@ package com.michelet.inventory.presentation;
 
 import com.michelet.common.response.ApiResponse;
 import com.michelet.inventory.application.ExhibitionSchedulerService;
+import com.michelet.inventory.application.InventoryOutboxScheduler;
 import com.michelet.inventory.application.StockSchedulerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +17,7 @@ public class SchedulerTriggerController {
 
     private final StockSchedulerService stockSchedulerService;
     private final ExhibitionSchedulerService exhibitionSchedulerService;
+    private final InventoryOutboxScheduler inventoryOutboxScheduler;
 
     // 일일 재고 강제 리셋 버튼 - 테스트용!
     @PostMapping("/trigger-stock")
@@ -29,5 +31,12 @@ public class SchedulerTriggerController {
     public ResponseEntity<ApiResponse<String>> triggerExhibition() {
         exhibitionSchedulerService.updateExhibitionStatus();
         return ResponseEntity.ok(ApiResponse.ok("전시 상태 갱신 트리거 작동 완료"));
+    }
+
+    // Outbox 스케줄러 강제 갱신 버튼 - 테스트용!
+    @PostMapping("/trigger-outbox")
+    public ResponseEntity<ApiResponse<String>> triggerOutbox() {
+        inventoryOutboxScheduler.processOutboxEvents();
+        return ResponseEntity.ok(ApiResponse.ok("Outbox 스케줄러 작동 완료 (Kafka 발행됨)"));
     }
 }
