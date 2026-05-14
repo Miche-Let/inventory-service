@@ -4,7 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -21,10 +22,10 @@ public class ProcessedEvent {
     private UUID eventId;
 
     @Column(nullable = false)
-    private LocalDateTime processedAt;
+    private Instant processedAt;
 
     public ProcessedEvent(UUID eventId) {
         this.eventId = eventId;
-        this.processedAt = LocalDateTime.now();
+        this.processedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
     }
 }
