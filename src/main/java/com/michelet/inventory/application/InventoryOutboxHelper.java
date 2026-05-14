@@ -58,7 +58,7 @@ public class InventoryOutboxHelper {
                 .payload(payloadJson)
                 .build();
             outboxRepository.save(outbox);
-            log.info("[Inventory Outbox] 이벤트 적재 완료: type={}, id={}", eventType, aggregateId);
+            log.info("[Inventory Outbox] 이벤트 적재 요청: type={}, id={}", eventType, aggregateId);
         } catch (JsonProcessingException e) {
             log.error("Outbox 페이로드 직렬화 실패. aggregateId={}, eventType={}", aggregateId, eventType, e);
             throw new RuntimeException("Outbox 이벤트 생성 중 오류가 발생했습니다.", e);
