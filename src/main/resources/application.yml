@@ -35,8 +35,7 @@ spring:
                 spring.json.trusted.packages: "com.michelet.inventory.infrastructure.messaging.dto,com.michelet.order.application.dto"
                 spring.json.use.type.headers: true
                 # 서로 다른 패키지의 이벤트를 1:1로 매핑
-                spring.json.type.mapping: "com.michelet.order.application.dto.StockRestoreEventPayload:com.michelet.inventory.infrastructure.messaging.dto.StockRestoreMessage"
-
+                spring.json.type.mapping: "com.michelet.order.application.dto.StockRestoreEventPayload:com.michelet.inventory.infrastructure.messaging.dto.StockRestoreMessage,com.michelet.order.application.dto.OrderCreatedEventPayload:com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage"
 
 server:
     port: 19900
@@ -53,6 +52,9 @@ inventory:
             status-changed: "product.status-changed"
             daily-reset: "stock.daily-reset"
             product-updated: "product.updated"
+            order-created: "order.created"
+            order-approved: "order.approved"
+            order-rejected: "order.rejected"
         consumer:
             retry:
                 interval-ms: 1000

@@ -21,7 +21,8 @@ public class DeadLetterConsumer {
         topics = {
             "${inventory.kafka.topic.restore-request:order.stock-restore.requested}.DLT",
             "${inventory.kafka.topic.restored:stock.restored}.DLT",
-            "${inventory.kafka.topic.reserved:stock.reserved}.DLT"
+            "${inventory.kafka.topic.reserved:stock.reserved}.DLT",
+            "${inventory.kafka.topic.order-created:order.created}.DLT"
         },
         groupId = "${spring.kafka.consumer.group-id:inventory-service-consumer}-dlt",
         containerFactory = "dltListenerContainerFactory" // String 전용 팩토리 사용

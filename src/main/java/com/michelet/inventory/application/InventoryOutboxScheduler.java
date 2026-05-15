@@ -10,6 +10,8 @@ import com.michelet.inventory.application.dto.StockRestoredEvent;
 import com.michelet.inventory.domain.model.InventoryOutbox;
 import com.michelet.inventory.domain.model.OutboxStatus;
 import com.michelet.inventory.domain.repository.InventoryOutboxRepository;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderApprovedEvent;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderRejectedEvent;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +41,8 @@ public class InventoryOutboxScheduler {
     private static final String EVENT_STOCK_RESERVED = "STOCK_RESERVED";
     private static final String EVENT_STOCK_RESTORED = "STOCK_RESTORED";
     private static final String EVENT_DAILY_RESET = "DAILY_STOCK_RESET";
+    private static final String EVENT_ORDER_APPROVED = "ORDER_APPROVED";
+    private static final String EVENT_ORDER_REJECTED = "ORDER_REJECTED";
 
     @Value("${inventory.kafka.topic.product-created:product.created}")
     private String topicProductCreated;
@@ -52,6 +56,10 @@ public class InventoryOutboxScheduler {
     private String topicStockRestored;
     @Value("${inventory.kafka.topic.daily-reset:stock.daily-reset}")
     private String topicDailyReset;
+    @Value("${inventory.kafka.topic.order-approved:order.approved}")
+    private String topicOrderApproved;
+    @Value("${inventory.kafka.topic.order-rejected:order.rejected}")
+    private String topicOrderRejected;
 
     @Scheduled(fixedDelay = 5000)
     public void processOutboxEvents() {
@@ -119,6 +127,8 @@ public class InventoryOutboxScheduler {
             case EVENT_STOCK_RESERVED -> objectMapper.readValue(jsonPayload, StockReservedEvent.class);
             case EVENT_STOCK_RESTORED -> objectMapper.readValue(jsonPayload, StockRestoredEvent.class);
             case EVENT_DAILY_RESET -> objectMapper.readValue(jsonPayload, DailyStockResetEvent.class);
+            case EVENT_ORDER_APPROVED -> objectMapper.readValue(jsonPayload, OrderApprovedEvent.class);
+            case EVENT_ORDER_REJECTED -> objectMapper.readValue(jsonPayload, OrderRejectedEvent.class);
             // 매핑 안 된 이벤트를 String으로 보내면 직렬화 에러 발생! 예외를 던져서 스케줄러 재시도 루프로 넘김
             default -> {
                 log.warn("등록되지 않은 알 수 없는 이벤트 타입입니다: {}", eventType);
@@ -135,6 +145,8 @@ public class InventoryOutboxScheduler {
             case EVENT_STOCK_RESERVED -> topicStockReserved;
             case EVENT_STOCK_RESTORED -> topicStockRestored;
             case EVENT_DAILY_RESET -> topicDailyReset;
+            case EVENT_ORDER_APPROVED -> topicOrderApproved;
+            case EVENT_ORDER_REJECTED -> topicOrderRejected;
             default -> "inventory.unknown.event";
         };
     }

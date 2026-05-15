@@ -1,6 +1,10 @@
 package com.michelet.inventory.infrastructure.messaging;
 
+import com.michelet.common.exception.BusinessException;
+import com.michelet.inventory.application.InventoryOutboxHelper;
 import com.michelet.inventory.application.StockLockFacade;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderRejectedEvent;
 import com.michelet.inventory.infrastructure.messaging.dto.StockRestoreMessage;
 import com.michelet.inventory.presentation.dto.RestoreStockRequest;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +18,30 @@ import org.springframework.stereotype.Component;
 public class OrderEventConsumer {
 
     private final StockLockFacade stockLockFacade;
+    private final InventoryOutboxHelper outboxHelper;
+
+    // 오더 생성 이벤트를 비동기로 받아서 다중 락 처리
+    @KafkaListener(
+        topics = "${inventory.kafka.topic.order-created:order.created}",
+        groupId = "${spring.kafka.consumer.group-id:inventory-service-consumer}"
+    )
+    public void consumeOrderCreated(OrderCreatedMessage payload) {
+        log.info("[Kafka Consumer] 신규 주문 생성 메시지 수신 -> 재고 다중 차감 시도: reservationId={}", payload.reservationId());
+        try {
+            stockLockFacade.reserveOrderStocksWithLock(payload);
+        } catch (IllegalArgumentException e) {
+            log.error("[Kafka Consumer] 비즈니스/검증 룰 위반 에러 (DLT 직행 대상). reservationId: {}", payload.reservationId(), e);
+            throw e;
+        } catch (BusinessException e) {
+            // 품절, 한도 초과 등 비즈니스 예외 시 오더 서비스에 거절 이벤트 전송
+            log.warn("[Kafka Consumer] 비즈니스 로직에 의한 재고 차감 실패 (거절 이벤트 정상 발행). 사유: {}", e.getMessage());
+            outboxHelper.append("ORDER", payload.reservationId().toString(), "ORDER_REJECTED",
+                new OrderRejectedEvent(payload.reservationId(), e.getMessage()));
+        } catch (Exception e) {
+            log.error("[Kafka Consumer] 재고 차감 중 일시적 에러 발생 (재시도 대상). reservationId: {}", payload.reservationId(), e);
+            throw new RuntimeException("재고 다중 차감 실패", e);
+        }
+    }
 
     @KafkaListener(
         topics = "${inventory.kafka.topic.restore-request:order.stock-restore.requested}",
