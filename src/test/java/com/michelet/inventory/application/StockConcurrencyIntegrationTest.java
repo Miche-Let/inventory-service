@@ -5,10 +5,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 
+import com.michelet.inventory.application.dto.ReserveStockRequest;
 import com.michelet.inventory.domain.model.Stock;
 import com.michelet.inventory.domain.repository.StockRepository;
 import com.michelet.inventory.infrastructure.repository.JpaStockRepository;
-import com.michelet.inventory.presentation.dto.ReserveStockRequest;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;

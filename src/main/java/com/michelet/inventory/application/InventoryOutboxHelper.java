@@ -33,21 +33,10 @@ public class InventoryOutboxHelper {
         }
     }
 
-    // MANDATORY로 변경하여 부모 트랜잭션이 없으면 즉각 실패하도록 원자성 강제
+    // MANDATORY로 변경하여 부모 트랜잭션이 없으면 즉각 실패하도록 원자성 강제 (정상 비즈니스 로직용)
     @Transactional(propagation = Propagation.MANDATORY)
     public void append(String aggregateType, String aggregateId, String eventType, Object payloadObj) {
-        if (aggregateType == null || aggregateType.isBlank()) {
-            throw new IllegalArgumentException("aggregateType은 필수입니다.");
-        }
-        if (aggregateId == null || aggregateId.isBlank()) {
-            throw new IllegalArgumentException("aggregateId는 필수입니다.");
-        }
-        if (eventType == null || eventType.isBlank()) {
-            throw new IllegalArgumentException("eventType은 필수입니다.");
-        }
-        if (payloadObj == null) {
-            throw new IllegalArgumentException("payloadObj는 필수입니다.");
-        }
+        validateInputs(aggregateType, aggregateId, eventType, payloadObj);
 
         try {
             String payloadJson = objectMapper.writeValueAsString(payloadObj);
@@ -59,6 +48,27 @@ public class InventoryOutboxHelper {
                 .build();
             outboxRepository.save(outbox);
             log.info("[Inventory Outbox] 이벤트 적재 요청: type={}, id={}", eventType, aggregateId);
+        } catch (JsonProcessingException e) {
+            log.error("Outbox 페이로드 직렬화 실패. aggregateId={}, eventType={}", aggregateId, eventType, e);
+            throw new RuntimeException("Outbox 이벤트 생성 중 오류가 발생했습니다.", e);
+        }
+    }
+
+    // 부모 트랜잭션이 롤백된 후, Catch 블록 등에서 독립적으로 보상/거절 이벤트를 기록할 때 사용 (Saga 롤백용)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void appendIndependent(String aggregateType, String aggregateId, String eventType, Object payloadObj) {
+        validateInputs(aggregateType, aggregateId, eventType, payloadObj);
+
+        try {
+            String payloadJson = objectMapper.writeValueAsString(payloadObj);
+            InventoryOutbox outbox = InventoryOutbox.builder()
+                .aggregateType(aggregateType)
+                .aggregateId(aggregateId)
+                .eventType(eventType)
+                .payload(payloadJson)
+                .build();
+            outboxRepository.save(outbox);
+            log.info("[Inventory Outbox] 독립 트랜잭션 이벤트 적재 요청 (롤백/거절용): type={}, id={}", eventType, aggregateId);
         } catch (JsonProcessingException e) {
             log.error("Outbox 페이로드 직렬화 실패. aggregateId={}, eventType={}", aggregateId, eventType, e);
             throw new RuntimeException("Outbox 이벤트 생성 중 오류가 발생했습니다.", e);
@@ -94,5 +104,21 @@ public class InventoryOutboxHelper {
             }
             outboxRepository.save(outbox);
         });
+    }
+
+    // 공통 파라미터 검증 메서드
+    private void validateInputs(String aggregateType, String aggregateId, String eventType, Object payloadObj) {
+        if (aggregateType == null || aggregateType.isBlank()) {
+            throw new IllegalArgumentException("aggregateType은 필수입니다.");
+        }
+        if (aggregateId == null || aggregateId.isBlank()) {
+            throw new IllegalArgumentException("aggregateId는 필수입니다.");
+        }
+        if (eventType == null || eventType.isBlank()) {
+            throw new IllegalArgumentException("eventType은 필수입니다.");
+        }
+        if (payloadObj == null) {
+            throw new IllegalArgumentException("payloadObj는 필수입니다.");
+        }
     }
 }

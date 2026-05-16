@@ -1,6 +1,8 @@
 package com.michelet.inventory.application;
 
 import com.michelet.inventory.application.dto.ProductStatusChangedEvent;
+import com.michelet.inventory.application.dto.ReserveStockRequest;
+import com.michelet.inventory.application.dto.RestoreStockRequest;
 import com.michelet.inventory.application.dto.StockReservedEvent;
 import com.michelet.inventory.application.dto.StockRestoredEvent;
 import com.michelet.inventory.domain.exception.StockNotFoundException;
@@ -15,8 +17,6 @@ import com.michelet.inventory.domain.repository.ProductRepository;
 import com.michelet.inventory.domain.repository.StockRepository;
 import com.michelet.inventory.infrastructure.messaging.dto.OrderApprovedEvent;
 import com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage;
-import com.michelet.inventory.presentation.dto.ReserveStockRequest;
-import com.michelet.inventory.presentation.dto.RestoreStockRequest;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
