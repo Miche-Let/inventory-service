@@ -4,7 +4,7 @@ on:
     pull_request:
         branches: [ main, dev ]
     push:
-        branches: [ main ]
+        branches: [ main, dev ]
 
 permissions:
     contents: read # 내 코드를 읽을 수 있게(코드이동) 접근 권한을 준다.
