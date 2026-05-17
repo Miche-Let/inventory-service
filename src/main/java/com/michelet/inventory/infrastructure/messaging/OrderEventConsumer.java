@@ -4,7 +4,7 @@ import com.michelet.common.exception.BusinessException;
 import com.michelet.inventory.application.InventoryOutboxHelper;
 import com.michelet.inventory.application.StockLockFacade;
 import com.michelet.inventory.application.dto.RestoreStockRequest;
-import com.michelet.inventory.domain.exception.InventoryErrorCode;
+import com.michelet.inventory.domain.exception.ConcurrencyFailureException;
 import com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage;
 import com.michelet.inventory.infrastructure.messaging.dto.OrderRejectedEvent;
 import com.michelet.inventory.infrastructure.messaging.dto.StockRestoreMessage;
@@ -44,13 +44,14 @@ public class OrderEventConsumer {
         } catch (IllegalArgumentException e) {
             log.error("[Kafka Consumer] 비즈니스/검증 룰 위반 에러 (DLT 직행 대상). reservationId: {}", payload.reservationId(), e);
             throw e;
-        } catch (BusinessException e) {
-            // 락 획득 실패(일시적 경합)인 경우, 주문 거절을 하지 않고 RuntimeException을 던져 카프카 재시도를 유도
-            if (InventoryErrorCode.CONCURRENCY_ERROR.name().equals(e.getErrorCode())) {
-                log.error("[Kafka Consumer] 락 경합으로 인한 일시적 실패 (재시도 대상). reservationId={}", payload.reservationId(), e);
-                throw new RuntimeException("재고 락 경합으로 인한 주문 처리 지연", e);
-            }
 
+        } catch (ConcurrencyFailureException e) {
+            // 여기서 동시성 에러를 가로채서 재시도 처리함!
+            // 락 획득 실패(일시적 경합)인 경우, 주문 거절을 하지 않고 RuntimeException을 던져 카프카 재시도를 유도
+            log.error("[Kafka Consumer] 락 경합으로 인한 일시적 실패 (재시도 대상). reservationId={}", payload.reservationId(), e);
+            throw new RuntimeException("재고 락 경합으로 인한 주문 처리 지연", e);
+
+        } catch (BusinessException e) {
             // 품절, 한도 초과 등 명확한 비즈니스 예외 시에만 오더 서비스에 거절 이벤트 전송
             log.warn("[Kafka Consumer] 비즈니스 로직에 의한 재고 차감 실패 (거절 이벤트 정상 발행). 사유: {}", e.getMessage());
             // 롤백된 트랜잭션 밖에서 아웃박스를 안전하게 저장하기 위해 appendIndependent 사용!
