@@ -1,24 +1,71 @@
 package com.michelet.inventory.infrastructure.messaging;
 
+import com.michelet.common.exception.BusinessException;
+import com.michelet.inventory.application.InventoryOutboxHelper;
 import com.michelet.inventory.application.StockLockFacade;
+import com.michelet.inventory.application.dto.RestoreStockRequest;
+import com.michelet.inventory.domain.exception.ConcurrencyFailureException;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderRejectedEvent;
 import com.michelet.inventory.infrastructure.messaging.dto.StockRestoreMessage;
-import com.michelet.inventory.presentation.dto.RestoreStockRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.annotation.KafkaHandler;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
+// 클래스 레벨에서 단일 토픽(inventory.command)을 구독하도록 통합
+@KafkaListener(
+    topics = "${inventory.kafka.topic.inventory-command:inventory.command}",
+    groupId = "${spring.kafka.consumer.group-id:inventory-service-consumer}"
+)
 public class OrderEventConsumer {
 
     private final StockLockFacade stockLockFacade;
+    private final InventoryOutboxHelper outboxHelper;
 
-    @KafkaListener(
-        topics = "${inventory.kafka.topic.restore-request:order.stock-restore.requested}",
-        groupId = "${spring.kafka.consumer.group-id:inventory-service-consumer}"
-    )
+    // TypeId 헤더를 보고 스프링 카프카가 이 메서드로 라우팅해 줌
+    @KafkaHandler
+    public void consumeOrderCreated(OrderCreatedMessage payload) {
+        // payload null 체크 (Tombstone 메시지 방어 - NPE 방지)
+        if (payload == null) {
+            log.error("[Kafka Consumer] 잘못된 주문 생성 이벤트 수신: payload가 null입니다 (Tombstone 메시지일 가능성).");
+            throw new IllegalArgumentException("주문 생성 이벤트 파싱 오류: payload는 null일 수 없습니다.");
+        }
+
+        // null 체크 이후에 로깅 (In-Order 처리)
+        log.info("[Kafka Consumer] 신규 주문 생성 메시지 수신 -> 재고 다중 차감 시도 (In-Order 처리): reservationId={}",
+            payload.reservationId());
+        try {
+            stockLockFacade.reserveOrderStocksWithLock(payload);
+        } catch (IllegalArgumentException e) {
+            log.error("[Kafka Consumer] 비즈니스/검증 룰 위반 에러 (DLT 직행 대상). reservationId: {}", payload.reservationId(), e);
+            throw e;
+
+        } catch (ConcurrencyFailureException e) {
+            // 여기서 동시성 에러를 가로채서 재시도 처리함!
+            // 락 획득 실패(일시적 경합)인 경우, 주문 거절을 하지 않고 RuntimeException을 던져 카프카 재시도를 유도
+            log.error("[Kafka Consumer] 락 경합으로 인한 일시적 실패 (재시도 대상). reservationId={}", payload.reservationId(), e);
+            throw new RuntimeException("재고 락 경합으로 인한 주문 처리 지연", e);
+
+        } catch (BusinessException e) {
+            // 품절, 한도 초과 등 명확한 비즈니스 예외 시에만 오더 서비스에 거절 이벤트 전송
+            log.warn("[Kafka Consumer] 비즈니스 로직에 의한 재고 차감 실패 (거절 이벤트 정상 발행). 사유: {}", e.getMessage());
+            // 롤백된 트랜잭션 밖에서 아웃박스를 안전하게 저장하기 위해 appendIndependent 사용!
+            outboxHelper.appendIndependent("ORDER", payload.reservationId().toString(), "ORDER_REJECTED",
+                new OrderRejectedEvent(payload.reservationId(), e.getMessage()));
+
+        } catch (Exception e) {
+            log.error("[Kafka Consumer] 재고 차감 중 일시적 에러 발생 (재시도 대상). reservationId: {}", payload.reservationId(), e);
+            throw new RuntimeException("재고 다중 차감 실패", e);
+        }
+    }
+
+    // 복구 메시지가 들어오면 이 메서드로 라우팅해 줌
+    @KafkaHandler
     public void consumeStockRestoreRequest(StockRestoreMessage payload) {
         if (payload == null) {
             log.error("[Kafka Consumer] 잘못된 복구 이벤트 수신: payload가 null입니다 (Tombstone 메시지일 가능성).");
@@ -26,7 +73,7 @@ public class OrderEventConsumer {
             throw new IllegalArgumentException("재고 복구 이벤트 파싱 오류: payload는 null일 수 없습니다.");
         }
 
-        log.info("[Kafka Consumer] 재고 복구 이벤트 수신: eventId={}, optionId={}, quantity={}", payload.eventId(),
+        log.info("[Kafka Consumer] 재고 복구 이벤트 수신 (In-Order 처리): eventId={}, optionId={}, quantity={}", payload.eventId(),
             payload.optionId(), payload.quantity());
 
         try {
@@ -48,5 +95,15 @@ public class OrderEventConsumer {
             log.error("[Kafka Consumer] 재고 복구 이벤트 처리 중 일시적 에러 발생 (재시도 대상). optionId: {}", payload.optionId(), e);
             throw new RuntimeException("재고 복구 컨슈머 처리 실패", e);
         }
+    }
+
+    // 알 수 없는 타입의 객체가 inventory.command로 들어올 경우, 조용히 넘기지 않고 예외를 발생시켜 DLT로 격리
+    @KafkaHandler(isDefault = true)
+    public void unknown(Object object) {
+        log.error("[Kafka Consumer] 지원하지 않는 커맨드 타입 수신. object={}", object);
+        throw new IllegalArgumentException(
+            "지원하지 않는 inventory.command payload 타입: "
+                + (object == null ? "null" : object.getClass().getName())
+        );
     }
 }

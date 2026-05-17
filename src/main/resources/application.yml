@@ -32,11 +32,10 @@ spring:
             properties:
                 # 실제 역직렬화를 수행할 델리게이트 클래스 지정
                 spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
-                spring.json.trusted.packages: "com.michelet.inventory.infrastructure.messaging.dto,com.michelet.order.application.dto"
+                spring.json.trusted.packages: "com.michelet.inventory.infrastructure.messaging.dto"
                 spring.json.use.type.headers: true
                 # 서로 다른 패키지의 이벤트를 1:1로 매핑
-                spring.json.type.mapping: "com.michelet.order.application.dto.StockRestoreEventPayload:com.michelet.inventory.infrastructure.messaging.dto.StockRestoreMessage"
-
+                spring.json.type.mapping: "com.michelet.order.application.dto.StockRestoreEventPayload:com.michelet.inventory.infrastructure.messaging.dto.StockRestoreMessage,com.michelet.order.application.dto.OrderCreatedEventPayload:com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage"
 
 server:
     port: 19900
@@ -48,11 +47,14 @@ inventory:
         topic:
             product-created: "product.created"
             reserved: "stock.reserved"
-            restore-request: "order.stock-restore.requested" # 오더의 '명령'을 수신할 토픽
             restored: "stock.restored" # 카탈로그로 '결과'를 발송할 토픽
             status-changed: "product.status-changed"
             daily-reset: "stock.daily-reset"
             product-updated: "product.updated"
+            # 분리되어 있던 토픽을 지우고, 단일 통합 커맨드 토픽 추가
+            inventory-command: "inventory.command"
+            order-approved: "order.approved"
+            order-rejected: "order.rejected"
         consumer:
             retry:
                 interval-ms: 1000

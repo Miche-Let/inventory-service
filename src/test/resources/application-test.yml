@@ -51,4 +51,4 @@ inventory:
             restored: "stock.restored"
             status-changed: "product.status-changed"
             daily-reset: "stock.daily-reset"
-
+            inventory-command: "inventory.command"

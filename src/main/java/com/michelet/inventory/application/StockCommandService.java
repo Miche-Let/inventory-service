@@ -1,6 +1,8 @@
 package com.michelet.inventory.application;
 
 import com.michelet.inventory.application.dto.ProductStatusChangedEvent;
+import com.michelet.inventory.application.dto.ReserveStockRequest;
+import com.michelet.inventory.application.dto.RestoreStockRequest;
 import com.michelet.inventory.application.dto.StockReservedEvent;
 import com.michelet.inventory.application.dto.StockRestoredEvent;
 import com.michelet.inventory.domain.exception.StockNotFoundException;
@@ -13,8 +15,13 @@ import com.michelet.inventory.domain.repository.ProcessedEventRepository;
 import com.michelet.inventory.domain.repository.ProductOptionRepository;
 import com.michelet.inventory.domain.repository.ProductRepository;
 import com.michelet.inventory.domain.repository.StockRepository;
-import com.michelet.inventory.presentation.dto.ReserveStockRequest;
-import com.michelet.inventory.presentation.dto.RestoreStockRequest;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderApprovedEvent;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -99,5 +106,65 @@ public class StockCommandService {
             stock.getCurrentDailyStock()
         );
         outboxHelper.append("STOCK", request.optionId().toString(), "STOCK_RESTORED", event);
+    }
+
+    // 다중 재고 비동기 처리 트랜잭션
+    @Transactional
+    public void processOrderCreation(OrderCreatedMessage msg) {
+        if (processedEventRepository.existsById(msg.eventId())) {
+            log.warn("[Idempotency] 이미 처리된 주문 메시지입니다. reservationId={}", msg.reservationId());
+            return;
+        }
+
+        Map<UUID, Integer> groupedItems = msg.items().stream()
+            .collect(Collectors.groupingBy(
+                OrderCreatedMessage.OrderItemDto::optionId,
+                Collectors.summingInt(OrderCreatedMessage.OrderItemDto::quantity)
+            ));
+
+        List<Stock> modifiedStocks = new ArrayList<>();
+
+        // 합산된 수량으로 재고 차감 시도
+        for (Map.Entry<UUID, Integer> entry : groupedItems.entrySet()) {
+            UUID optionId = entry.getKey();
+            int quantity = entry.getValue();
+
+            Stock stock = stockRepository.findById(optionId)
+                .orElseThrow(StockNotFoundException::new);
+
+            stock.reserve(quantity);
+            modifiedStocks.add(stock);
+
+            // 카탈로그 동기화용 이벤트 발송
+            // 파티션 키는 optionId - 동일 옵션에 대한 차감 순서 FIFO
+            StockReservedEvent reservedEvent = new StockReservedEvent(
+                stock.getOptionId(),
+                stock.getTotalQuantity(),
+                stock.getCurrentDailyStock()
+            );
+            outboxHelper.append("STOCK", stock.getOptionId().toString(), "STOCK_RESERVED", reservedEvent);
+            log.info("[Inventory Saga] 다중 주문 옵션 차감 이벤트 적재 완료: optionId={}, 수량={}", stock.getOptionId(), quantity);
+
+            // 품절 처리 이벤트 발송 준비
+            if (stock.getTotalQuantity() == 0) {
+                ProductOption option = productOptionRepository.findById(stock.getOptionId()).orElseThrow();
+                Product product = option.getProduct();
+                if (product.getStatus() != ProductStatus.SOLDOUT && product.getStatus() != ProductStatus.DELETED
+                    && product.getStatus() != ProductStatus.EXPIRED) {
+                    product.changeStatus(ProductStatus.SOLDOUT);
+                    productRepository.save(product);
+                    outboxHelper.append("PRODUCT", product.getId().toString(), "PRODUCT_STATUS_CHANGED",
+                        new ProductStatusChangedEvent(product.getId(), product.getStatus().name()));
+                }
+            }
+        }
+
+        stockRepository.saveAll(modifiedStocks);
+        processedEventRepository.save(new ProcessedEvent(msg.eventId()));
+
+        // 모두 성공 시 승인 이벤트 적재
+        outboxHelper.append("ORDER", msg.reservationId().toString(), "ORDER_APPROVED",
+            new OrderApprovedEvent(msg.reservationId()));
+        log.info("[Inventory Saga] 다중 주문 재고 선점 성공 -> 승인 이벤트 적재 완료: {}", msg.reservationId());
     }
 }

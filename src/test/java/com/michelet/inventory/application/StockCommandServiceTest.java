@@ -9,6 +9,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.michelet.inventory.application.dto.ReserveStockRequest;
+import com.michelet.inventory.application.dto.RestoreStockRequest;
 import com.michelet.inventory.application.dto.StockReservedEvent;
 import com.michelet.inventory.application.dto.StockRestoredEvent;
 import com.michelet.inventory.domain.exception.MaxLimitExceededException;
@@ -20,8 +22,6 @@ import com.michelet.inventory.domain.repository.ProcessedEventRepository;
 import com.michelet.inventory.domain.repository.ProductOptionRepository;
 import com.michelet.inventory.domain.repository.ProductRepository;
 import com.michelet.inventory.domain.repository.StockRepository;
-import com.michelet.inventory.presentation.dto.ReserveStockRequest;
-import com.michelet.inventory.presentation.dto.RestoreStockRequest;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;

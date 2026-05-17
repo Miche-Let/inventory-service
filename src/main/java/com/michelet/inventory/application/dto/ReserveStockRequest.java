@@ -1,4 +1,4 @@
-package com.michelet.inventory.presentation.dto;
+package com.michelet.inventory.application.dto;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;

@@ -19,7 +19,8 @@ public class DeadLetterConsumer {
      */
     @KafkaListener(
         topics = {
-            "${inventory.kafka.topic.restore-request:order.stock-restore.requested}.DLT",
+            // 개별로 나뉘어 있던 토픽을 지우고, 통합 커맨드 토픽의 DLT 구독
+            "${inventory.kafka.topic.inventory-command:inventory.command}.DLT",
             "${inventory.kafka.topic.restored:stock.restored}.DLT",
             "${inventory.kafka.topic.reserved:stock.reserved}.DLT"
         },

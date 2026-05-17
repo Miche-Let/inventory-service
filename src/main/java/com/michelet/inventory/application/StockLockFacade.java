@@ -1,7 +1,14 @@
 package com.michelet.inventory.application;
 
-import com.michelet.inventory.presentation.dto.ReserveStockRequest;
-import com.michelet.inventory.presentation.dto.RestoreStockRequest;
+import com.michelet.common.exception.BusinessException;
+import com.michelet.inventory.application.dto.ReserveStockRequest;
+import com.michelet.inventory.application.dto.RestoreStockRequest;
+import com.michelet.inventory.domain.exception.InventoryErrorCode;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage;
+import com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage.OrderItemDto;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -64,6 +71,45 @@ public class StockLockFacade {
         } finally {
             if (lock != null && lock.isHeldByCurrentThread()) {
                 lock.unlock();
+            }
+        }
+    }
+
+    // 3. 다중 품목 비동기 재고 선점 (OrderCreatedMessage 수신용)
+    public void reserveOrderStocksWithLock(
+        OrderCreatedMessage msg) {
+        // 데드락 방지를 위해 OptionId를 오름차순으로 정렬하여 락을 순차적으로 획득
+        List<UUID> sortedOptionIds = msg.items().stream()
+            .map(OrderItemDto::optionId)
+            .sorted()
+            .toList();
+
+        List<RLock> locks = new ArrayList<>();
+        try {
+            for (java.util.UUID id : sortedOptionIds) {
+                RLock lock = redissonClient.getLock("stock:" + id);
+                if (lock.tryLock(5, TimeUnit.SECONDS)) {
+                    locks.add(lock);
+                } else {
+                    log.error("[StockLockFacade] 다중 재고 선점 락 획득 실패 - OptionId: {}", id);
+                    throw new BusinessException(
+                        InventoryErrorCode.CONCURRENCY_ERROR);
+                }
+            }
+            // 모든 락 획득 성공 시 비즈니스 로직 실행
+            stockCommandService.processOrderCreation(msg);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(
+                InventoryErrorCode.CONCURRENCY_ERROR);
+        } finally {
+            // 데드락 및 리소스 낭비 방지를 위해 역순으로 락 해제
+            for (int i = locks.size() - 1; i >= 0; i--) {
+                RLock lock = locks.get(i);
+                if (lock != null && lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
             }
         }
     }
