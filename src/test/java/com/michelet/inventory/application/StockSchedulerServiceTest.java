@@ -9,13 +9,37 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest
 @ActiveProfiles("test")
 @Transactional
+@Testcontainers
 class StockSchedulerServiceTest {
+
+    // 테스트 실행 시 가짜 미니 Redis 컨테이너 띄우기 (인프라 환경과 동일한 버전)
+    @Container
+    static GenericContainer<?> redis = new GenericContainer<>("redis:7-alpine")
+        .withExposedPorts(6379);
+
+    // 띄워진 가짜 Redis의 동적 IP와 포트를 스프링 환경변수에 주입
+    @DynamicPropertySource
+    static void redisProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.data.redis.host", redis::getHost);
+        registry.add("spring.data.redis.port", () -> redis.getMappedPort(6379));
+    }
+
+    // Kafka 연결 에러(로그 도배 및 실패)를 막기 위해 가짜 템플릿 주입
+    @MockitoBean
+    private KafkaTemplate<String, String> kafkaTemplate;
 
     @Autowired
     private StockSchedulerService stockSchedulerService;
