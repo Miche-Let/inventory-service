@@ -68,6 +68,8 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
 
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+    
+    testImplementation 'org.testcontainers:testcontainers'
 }
 
 dependencyManagement {
