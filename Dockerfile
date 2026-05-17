@@ -1,15 +1,20 @@
+FROM eclipse-temurin:17-jdk AS builder
+WORKDIR /app
+
+COPY gradlew .
+COPY gradle gradle
+COPY build.gradle settings.gradle ./
+COPY src src
+
+RUN chmod +x ./gradlew
+RUN ./gradlew bootJar -x test -x asciidoctor --no-daemon
+
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 
-# 1. non-root 전용 유저 및 그룹 생성 (appuser)
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+COPY --from=builder /app/build/libs/*.jar app.jar
 
-# 2. 호스트(로컬 PC)에서 이미 빌드된 jar 파일을 복사 (파일 소유권 자동 지정)
-COPY --chown=appuser:appuser build/libs/*-SNAPSHOT.jar app.jar
-
-# 3. 컨테이너 실행 권한을 appuser로 전환
-USER appuser
-
-EXPOSE 19900
+ARG SERVER_PORT=19900
+EXPOSE ${SERVER_PORT}
 
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

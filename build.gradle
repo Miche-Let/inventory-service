@@ -66,6 +66,8 @@ dependencies {
     testImplementation 'org.testcontainers:junit-jupiter'
 
     testImplementation 'org.springframework.security:spring-security-test'
+
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 }
 
 dependencyManagement {
@@ -89,4 +91,9 @@ tasks.named('asciidoctor') {
 bootJar {
     dependsOn asciidoctor
     from("${asciidoctor.outputDir}") { into 'static/docs' }
+}
+
+// plain jar 생성 방지
+jar {
+    enabled = false
 }
