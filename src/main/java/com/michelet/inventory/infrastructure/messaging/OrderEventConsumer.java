@@ -96,9 +96,13 @@ public class OrderEventConsumer {
         }
     }
 
-    // 만약 예상치 못한 다른 객체가 inventory.command로 들어올 경우, 서버가 터지지 않고 로그만 남기고 무시하도록 방어
+    // 알 수 없는 타입의 객체가 inventory.command로 들어올 경우, 조용히 넘기지 않고 예외를 발생시켜 DLT로 격리
     @KafkaHandler(isDefault = true)
     public void unknown(Object object) {
-        log.warn("[Kafka Consumer] 알 수 없는 타입의 커맨드가 inventory.command 토픽으로 들어왔습니다: {}", object);
+        log.error("[Kafka Consumer] 지원하지 않는 커맨드 타입 수신. object={}", object);
+        throw new IllegalArgumentException(
+            "지원하지 않는 inventory.command payload 타입: "
+                + (object == null ? "null" : object.getClass().getName())
+        );
     }
 }

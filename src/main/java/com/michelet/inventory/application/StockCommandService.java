@@ -19,6 +19,9 @@ import com.michelet.inventory.infrastructure.messaging.dto.OrderApprovedEvent;
 import com.michelet.inventory.infrastructure.messaging.dto.OrderCreatedMessage;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -113,15 +116,34 @@ public class StockCommandService {
             return;
         }
 
+        Map<UUID, Integer> groupedItems = msg.items().stream()
+            .collect(Collectors.groupingBy(
+                OrderCreatedMessage.OrderItemDto::optionId,
+                Collectors.summingInt(OrderCreatedMessage.OrderItemDto::quantity)
+            ));
+
         List<Stock> modifiedStocks = new ArrayList<>();
 
-        // 모든 아이템 재고 차감 시도 (실패 시 BusinessException 발생하여 Facade -> Consumer 로 롤백됨)
-        for (var item : msg.items()) {
-            Stock stock = stockRepository.findById(item.optionId())
+        // 합산된 수량으로 재고 차감 시도
+        for (Map.Entry<UUID, Integer> entry : groupedItems.entrySet()) {
+            UUID optionId = entry.getKey();
+            int quantity = entry.getValue();
+
+            Stock stock = stockRepository.findById(optionId)
                 .orElseThrow(StockNotFoundException::new);
 
-            stock.reserve(item.quantity());
+            stock.reserve(quantity);
             modifiedStocks.add(stock);
+
+            // 카탈로그 동기화용 이벤트 발송
+            // 파티션 키는 optionId - 동일 옵션에 대한 차감 순서 FIFO
+            StockReservedEvent reservedEvent = new StockReservedEvent(
+                stock.getOptionId(),
+                stock.getTotalQuantity(),
+                stock.getCurrentDailyStock()
+            );
+            outboxHelper.append("STOCK", stock.getOptionId().toString(), "STOCK_RESERVED", reservedEvent);
+            log.info("[Inventory Saga] 다중 주문 옵션 차감 이벤트 적재 완료: optionId={}, 수량={}", stock.getOptionId(), quantity);
 
             // 품절 처리 이벤트 발송 준비
             if (stock.getTotalQuantity() == 0) {
