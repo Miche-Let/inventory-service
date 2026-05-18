@@ -40,6 +40,7 @@ public class SecurityConfig {
             .formLogin(AbstractHttpConfigurer::disable)
             .httpBasic(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/actuator/health", "/actuator/prometheus").permitAll()
                 .requestMatchers("/api/v1/products/**", "/api/v1/admin/products/**").permitAll()
                 .requestMatchers("/internal/**").permitAll()
                 .anyRequest().authenticated()
